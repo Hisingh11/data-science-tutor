@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+.env
+uploads/
+assignments/
+data/knowledge_base/
+*.db
+.DS_Store
+*.log
