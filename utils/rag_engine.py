@@ -1,96 +1,81 @@
+"""
+RAG Engine - Simple version for Streamlit Cloud
+"""
+
 import os
 import json
 from typing import List, Dict
-import chromadb
 import streamlit as st
-import numpy as np
-
-# Simple embedding function without torch
-class SimpleEmbeddingFunction:
-    def __init__(self):
-        self.dimension = 384
-    
-    def __call__(self, texts):
-        # Simple hash-based embeddings (for demo purposes)
-        # In production, you'd use a proper embedding model
-        embeddings = []
-        for text in texts:
-            # Create a simple deterministic embedding
-            hash_val = hash(text) % 10000
-            np.random.seed(hash_val)
-            emb = np.random.randn(self.dimension).astype(np.float32)
-            embeddings.append(emb.tolist())
-        return embeddings
 
 class RAGEngine:
     def __init__(self, persist_directory="./data/knowledge_base"):
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
         
-        # Use simple embedding function instead of sentence-transformers
-        self.embedding_function = SimpleEmbeddingFunction()
-        
-        # Initialize ChromaDB
-        self.chroma_client = chromadb.PersistentClient(path=persist_directory)
-        
-        self.collection_name = "ds_knowledge"
-        collections = [c.name for c in self.chroma_client.list_collections()]
-        
-        if self.collection_name not in collections:
-            self.collection = self.chroma_client.create_collection(
-                name=self.collection_name,
-                embedding_function=self.embedding_function,
-                metadata={"description": "Data Science knowledge base"}
-            )
-        else:
-            self.collection = self.chroma_client.get_collection(
-                name=self.collection_name,
-                embedding_function=self.embedding_function
-            )
+        # Simple in-memory storage for demo
+        self.documents = []
+        self.knowledge_base = []
     
     def add_documents(self, documents: List[Dict]):
-        ids = []
-        texts = []
-        metadatas = []
-        
-        for i, doc in enumerate(documents):
-            doc_id = f"doc_{i}_{abs(hash(doc['text']))}"
-            ids.append(doc_id)
-            texts.append(doc['text'])
-            metadatas.append(doc.get('metadata', {}))
-        
-        self.collection.add(
-            ids=ids,
-            documents=texts,
-            metadatas=metadatas
-        )
-        
+        """Add documents to knowledge base"""
+        for doc in documents:
+            self.knowledge_base.append({
+                "text": doc['text'],
+                "metadata": doc.get('metadata', {})
+            })
         st.success(f"Added {len(documents)} documents to knowledge base")
     
     def search(self, query: str, n_results: int = 5) -> List[Dict]:
-        results = self.collection.query(
-            query_texts=[query],
-            n_results=n_results
-        )
+        """Simple keyword-based search"""
+        query_lower = query.lower()
+        results = []
         
-        documents = []
-        if results['documents'] and results['documents'][0]:
-            for i, doc in enumerate(results['documents'][0]):
-                documents.append({
-                    'text': doc,
-                    'metadata': results['metadatas'][0][i] if results['metadatas'] else {},
-                    'relevance': 1.0
+        for doc in self.knowledge_base:
+            # Simple keyword matching
+            text_lower = doc['text'].lower()
+            score = 0
+            
+            # Count keyword matches
+            keywords = query_lower.split()
+            for keyword in keywords:
+                if keyword in text_lower:
+                    score += 1
+            
+            if score > 0:
+                results.append({
+                    'text': doc['text'],
+                    'metadata': doc['metadata'],
+                    'relevance': score / max(len(keywords), 1)
                 })
         
-        return documents
+        # Sort by relevance and return top n_results
+        results.sort(key=lambda x: x['relevance'], reverse=True)
+        return results[:n_results]
     
     def load_initial_knowledge(self):
+        """Load initial Data Science knowledge base"""
         knowledge_docs = [
-            {"text": "Data Science Lifecycle: Problem Definition, Data Collection, Data Cleaning, EDA, Feature Engineering, Model Selection, Training, Evaluation, Deployment, Monitoring", "metadata": {"topic": "Data Science"}},
-            {"text": "Machine Learning: Supervised (Regression, Classification), Unsupervised (Clustering, PCA), Evaluation Metrics (MSE, Accuracy, F1, AUC-ROC)", "metadata": {"topic": "ML"}},
-            {"text": "Generative AI: LLMs, Transformers, Attention Mechanism, Prompt Engineering, RAG, Fine-tuning", "metadata": {"topic": "GenAI"}},
-            {"text": "Agentic AI: AI Agents, ReAct Pattern, Planning, Memory, Tool Use, Multi-agent Systems", "metadata": {"topic": "Agentic AI"}},
-            {"text": "Python for Data Science: NumPy, Pandas, Matplotlib, Scikit-learn for data manipulation and ML", "metadata": {"topic": "Python"}}
+            {
+                "text": "Data Science Lifecycle: 1. Problem Definition 2. Data Collection 3. Data Cleaning 4. EDA 5. Feature Engineering 6. Model Selection 7. Model Training 8. Model Evaluation 9. Deployment 10. Monitoring",
+                "metadata": {"topic": "Data Science Fundamentals"}
+            },
+            {
+                "text": "Key Machine Learning Algorithms: Supervised Learning: Linear Regression, Logistic Regression, Decision Trees, Random Forest, Gradient Boosting, SVM, Neural Networks. Unsupervised Learning: K-Means Clustering, Hierarchical Clustering, PCA, t-SNE. Evaluation Metrics: MSE, RMSE, MAE, R-squared, Accuracy, Precision, Recall, F1, AUC-ROC",
+                "metadata": {"topic": "Machine Learning"}
+            },
+            {
+                "text": "Generative AI Concepts: Core Components: LLMs (Large Language Models): GPT, LLaMA, Claude. Transformers: Self-attention mechanism, positional encoding. Prompt Engineering: Zero-shot, few-shot, chain-of-thought. RAG (Retrieval Augmented Generation): Combining retrieval with generation. Fine-tuning: Adapting pre-trained models to specific tasks.",
+                "metadata": {"topic": "Generative AI"}
+            },
+            {
+                "text": "Agentic AI Fundamentals: AI Agents combine LLMs with tools and decision-making. Key Agent Architectures: ReAct (Reason + Act), Plan-and-Execute, Multi-Agent Systems. Components: Planning Module, Memory (short-term and long-term), Tool Use, Reflection. Popular Frameworks: LangChain, AutoGPT, BabyAGI.",
+                "metadata": {"topic": "Agentic AI"}
+            },
+            {
+                "text": "Python for Data Science: Essential Libraries: NumPy for numerical computing, Pandas for data manipulation, Matplotlib/Seaborn for visualization, Scikit-learn for machine learning. Key operations: data cleaning, transformation, analysis, and modeling.",
+                "metadata": {"topic": "Python Data Science"}
+            }
         ]
+        
         self.add_documents(knowledge_docs)
         return len(knowledge_docs)
