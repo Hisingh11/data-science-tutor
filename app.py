@@ -149,6 +149,20 @@ st.markdown("""
     code {
         font-family: 'Courier New', monospace;
     }
+    
+    .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+        padding: 0.5rem;
+        background: rgba(255,255,255,0.9);
+        font-size: 0.8rem;
+        color: #666;
+        z-index: 999;
+        border-top: 1px solid #e5e5e5;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -171,91 +185,192 @@ if 'initialized' not in st.session_state:
     with st.spinner("Initializing AI Tutor..."):
         st.session_state.rag_engine.load_initial_knowledge()
 
-# Helper function to detect commands
 def detect_command(message):
     """Detect special commands in user message"""
     message_lower = message.lower().strip()
     
-    # Interview commands
     if re.search(r'^(practice|interview|mock interview)', message_lower):
         return "interview", None
     elif re.search(r'start interview', message_lower):
         return "interview_start", None
-    
-    # Assignment commands
     elif re.search(r'^(assignment|generate assignment|create assignment)', message_lower):
-        # Extract topic if present
         topic_match = re.search(r'on\s+(\w+)', message_lower)
         topic = topic_match.group(1) if topic_match else None
         return "assignment", topic
-    
-    # Code commands
     elif re.search(r'^(code|write code|generate code|implement)', message_lower):
         return "code", message
-    
-    # Research commands
     elif re.search(r'^(research|deep research|search|find out about)', message_lower):
         topic = message_lower.replace('research', '').replace('deep research', '').replace('search', '').strip()
         return "research", topic if topic else None
     
-    # Default to chat
     return "chat", message
 
-# Process commands
 def process_command(command_type, content):
     """Process detected commands"""
     if command_type == "interview":
         return st.session_state.interview_system.start_interview("Data Science Fundamentals", "beginner")
-    
     elif command_type == "assignment":
         topic = content if content else "Data Science Fundamentals"
         assignment = st.session_state.assignment_manager.generate_assignment(topic, "intermediate", 10)
         return assignment
-    
     elif command_type == "code":
         result = st.session_state.code_assistant.generate_code(content, "python")
         return result
-    
     elif command_type == "research":
         topic = content if content else "latest developments in AI"
         research = st.session_state.research_engine.deep_research(topic)
         return research
-    
     return None
 
-# Generate AI response
 def generate_response(user_message):
     """Generate AI response using RAG"""
-    # Detect command
     command_type, command_content = detect_command(user_message)
     
     if command_type != "chat":
-        # Handle special commands
         result = process_command(command_type, command_content)
+        
         if command_type == "interview":
-            return f"""🎯 **Interview Mode Activated!**
-
-I'll help you practice with interview questions. Let's start with a question:
-
-**{st.session_state.interview_system.get_next_question()}**
-
-Type your answer, and I'll provide feedback. To end the interview, type 'end interview'."""
+            next_q = st.session_state.interview_system.get_next_question()
+            return "🎯 **Interview Mode Activated!**\n\nI'll help you practice with interview questions. Let's start with a question:\n\n**" + str(next_q) + "**\n\nType your answer, and I'll provide feedback. To end the interview, type 'end interview'."
         
         elif command_type == "assignment":
-            return f"""📝 **Assignment Generated!**
-
-**Topic:** {result.get('topic', 'Data Science')}
-**Questions:** {len(result.get('questions', []))}
-**Total Points:** {result.get('total_points', 0)}
-
-The assignment has been generated. You can download it using the button below.
-
-💡 *Type 'submit assignment' followed by your answers to get them graded.*"""
+            topic_name = result.get('topic', 'Data Science') if result else 'Data Science'
+            q_count = len(result.get('questions', [])) if result else 0
+            points = result.get('total_points', 0) if result else 0
+            return "📝 **Assignment Generated!**\n\n**Topic:** " + topic_name + "\n**Questions:** " + str(q_count) + "\n**Total Points:** " + str(points) + "\n\nThe assignment has been generated. You can download it using the button below.\n\n💡 *Type 'submit assignment' followed by your answers to get them graded.*"
         
         elif command_type == "code":
-            return f"""💻 **Code Generated!**
+            code_text = result.get('code', '') if result else ''
+            explanation = result.get('full_response', '')[:500] if result else ''
+            return "💻 **Code Generated!**\n\nHere's the code you requested:\n\n```python\n" + code_text + "\n```\n\n**Explanation:** " + explanation + "\n\n💡 *Need help debugging? Paste your code and I'll help fix errors.*"
+        
+        elif command_type == "research":
+            research_topic = result.get('topic', 'Topic') if result else 'Topic'
+            research_report = result.get('report', '')[:1000] if result else ''
+            takeaways = result.get('key_takeaways', '') if result else ''
+            return "🔬 **Research Complete!**\n\n## 📄 Research Report: " + research_topic + "\n\n" + research_report + "\n\n**Key Takeaways:**\n" + takeaways + "\n\n💡 *Want me to dive deeper into any specific aspect? Just ask!*"
+    
+    # Regular chat - use RAG
+    relevant_docs = st.session_state.rag_engine.search(user_message, n_results=3)
+    context = "\n\n".join([doc['text'] for doc in relevant_docs])
+    
+    if context and len(context) > 100:
+        response = st.session_state.model_manager.generate_with_context(
+            user_message, context, "reasoning", 0.7
+        )
+    else:
+        response = st.session_state.model_manager.generate(
+            user_message, "reasoning", 0.7
+        )
+    
+    return response
 
-Here's the code you requested:
+# Main UI
+if not st.session_state.messages:
+    st.markdown("""
+    <div class="welcome-header">
+        <h1>🎓 Data Science Tutor</h1>
+        <p>Your Personal AI Assistant for Data Science, ML, Gen AI & Agentic AI</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("### Quick Actions")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        if st.button("🎯 Practice Interview", use_container_width=True):
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "I want to practice for an interview"
+            })
+            response = generate_response("I want to practice for an interview")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+            st.rerun()
+    
+    with col2:
+        if st.button("📝 Generate Assignment", use_container_width=True):
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "Generate an assignment on Data Science"
+            })
+            response = generate_response("Generate an assignment on Data Science")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+            st.rerun()
+    
+    with col3:
+        if st.button("💻 Write Code", use_container_width=True):
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "Help me write code for data analysis"
+            })
+            response = generate_response("Help me write code for data analysis")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+            st.rerun()
+    
+    with col4:
+        if st.button("🔬 Deep Research", use_container_width=True):
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "Research the latest trends in AI"
+            })
+            response = generate_response("Research the latest trends in AI")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+            st.rerun()
+    
+    with col5:
+        if st.button("📚 Learn Basics", use_container_width=True):
+            st.session_state.messages.append({
+                "role": "user",
+                "content": "Explain machine learning basics"
+            })
+            response = generate_response("Explain machine learning basics")
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response
+            })
+            st.rerun()
+    
+    st.markdown("---")
+    st.markdown("### 💡 What can I help you with?")
+    st.markdown("""
+    - **Ask any Data Science question** - Get detailed explanations with examples
+    - **Practice interviews** - Type "practice interview" to start mock interviews
+    - **Generate assignments** - Type "generate assignment on [topic]"
+    - **Write code** - Type "write code for [task]" or "implement [function]"
+    - **Deep research** - Type "research [topic]" for comprehensive analysis
+    - **Debug code** - Paste your code and ask "what's wrong with this code?"
+    """)
 
-```python
-{result.get('code', '')}
+# Chat interface
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
+# Chat input
+if prompt := st.chat_input("Ask me anything about Data Science, ML, Gen AI, or Agentic AI..."):
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking"):
+            response = generate_response(prompt)
+            st.markdown(response)
+    
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    st.rerun()
+
+# Floating footer
+st.markdown('<div class="footer">Made with ❤️ by Himanshu | Powered by Groq AI</div>', unsafe_allow_html=True)
