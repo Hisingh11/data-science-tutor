@@ -477,7 +477,8 @@ elif selected_nav == "📖 Knowledge Base":
 
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; color: #666;">
-    <p>Data Science Tutor v1.0 | Powered by Groq LLM API | Open Source</p>
+<div style="text-align: center; padding: 20px; color: #666;">
+    <p style="font-size: 16px;">Made with <span style="color: #ff6b6b;">❤️</span> by <strong>Himanshu</strong></p>
+    <p>Data Science Tutor v1.0 | Made with ❤️ by Himanshu | Open Source</p>
 </div>
 """, unsafe_allow_html=True)
