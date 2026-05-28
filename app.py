@@ -16,12 +16,12 @@ from utils.deep_research import DeepResearchEngine
 # Page config
 st.set_page_config(
     page_title="Data Science Tutor",
-    page_icon="🎓",
+    page_icon="💬",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for clean technical UI
+# Custom CSS for ChatGPT-style minimal UI
 st.markdown("""
 <style>
     /* Hide all default Streamlit elements */
@@ -30,85 +30,90 @@ st.markdown("""
     footer {visibility: hidden;}
     .stAppHeader {display: none;}
     .stDeployButton {display: none;}
+    .stStatusWidget {display: none;}
     
-    /* Remove padding from main container */
+    /* Remove padding and center content */
     .main > div {
-        padding: 0rem 1rem;
+        padding: 0rem;
     }
     
     .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 4rem !important;
-        max-width: 900px !important;
+        padding-top: 0rem !important;
+        padding-bottom: 0rem !important;
+        max-width: 800px !important;
         margin: 0 auto !important;
     }
     
-    /* Chat message styling */
+    /* Chat messages container */
     .stChatMessage {
-        padding: 1rem;
-        border-radius: 0.75rem;
-        margin-bottom: 1rem;
+        padding: 1rem 1.5rem;
+        margin-bottom: 0rem;
         border: none;
+        background: transparent;
     }
     
-    /* User message - dark technical style */
+    /* User message - right aligned, light grey */
     .stChatMessageUser {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        color: #e0e0e0;
-        border-left: 3px solid #00d4ff;
+        background-color: #f0f2f5;
+        border-radius: 1.5rem;
+        margin-left: 2rem;
     }
     
-    /* Assistant message - light technical style */
+    /* Assistant message - left aligned, white */
     .stChatMessageAssistant {
-        background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ec 100%);
-        color: #1a1a2e;
-        border-left: 3px solid #667eea;
+        background-color: transparent;
+        border-radius: 0rem;
+        margin-right: 2rem;
     }
     
-    /* Chat input container */
+    /* Chat input container - fixed at bottom */
     .stChatInputContainer {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
-        background: rgba(255,255,255,0.95);
-        backdrop-filter: blur(10px);
-        padding: 1rem 2rem;
-        border-top: 1px solid rgba(0,0,0,0.1);
+        background: white;
+        padding: 1rem 2rem 2rem 2rem;
+        border-top: 1px solid #e5e5e5;
         z-index: 1000;
     }
     
-    /* Chat input styling */
-    .stChatInput input {
-        border-radius: 2rem !important;
-        border: 1px solid #e0e0e0 !important;
-        padding: 0.75rem 1.5rem !important;
-        font-size: 1rem !important;
+    /* Chat input field */
+    .stChatInput textarea {
+        border-radius: 1.5rem !important;
+        border: 1px solid #e5e5e5 !important;
         background: white !important;
+        font-size: 1rem !important;
+        padding: 0.75rem 1.5rem !important;
+        box-shadow: none !important;
     }
     
-    .stChatInput input:focus {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 2px rgba(102,126,234,0.1) !important;
+    .stChatInput textarea:focus {
+        border-color: #10a37f !important;
+        box-shadow: none !important;
     }
     
-    /* Button styling */
-    .stButton button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 2rem;
-        padding: 0.5rem 1rem;
-        font-weight: 500;
-        transition: all 0.3s ease;
+    /* Hide the default Streamlit chat input bar */
+    .stChatInput > div {
+        background: transparent !important;
     }
     
-    .stButton button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102,126,234,0.3);
+    /* Hide any success/warning/info boxes */
+    .stAlert, .element-container:has(.stAlert) {
+        display: none !important;
     }
     
-    /* Code block styling */
+    /* Hide the sidebar toggle button */
+    .st-emotion-cache-1wmy9hl {
+        display: none;
+    }
+    
+    /* Typography */
+    p, div, span {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    /* Code blocks */
     pre {
         background: #1e1e1e !important;
         padding: 1rem !important;
@@ -117,65 +122,32 @@ st.markdown("""
     }
     
     code {
-        font-family: 'Fira Code', 'Courier New', monospace !important;
+        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace !important;
         font-size: 0.85rem !important;
     }
     
-    /* Typography */
-    h1, h2, h3 {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    }
-    
-    /* Footer */
-    .tech-footer {
+    /* Footer - minimal */
+    .minimal-footer {
         position: fixed;
-        bottom: 0;
+        bottom: 0.5rem;
         left: 0;
         right: 0;
         text-align: center;
-        padding: 0.5rem;
-        font-size: 0.75rem;
-        font-family: 'Fira Code', monospace;
-        color: #888;
-        background: rgba(255,255,255,0.9);
-        backdrop-filter: blur(5px);
-        z-index: 999;
-        letter-spacing: 0.5px;
+        font-size: 0.7rem;
+        color: #aaa;
+        background: transparent;
+        z-index: 1001;
+        pointer-events: none;
     }
     
-    /* Scrollbar styling */
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+    /* Remove any extra padding from chat list */
+    .stChatMessageContent {
+        padding: 0.25rem 0;
     }
     
-    ::-webkit-scrollbar-track {
-        background: #f1f1f1;
-    }
-    
-    ::-webkit-scrollbar-thumb {
-        background: #888;
-        border-radius: 3px;
-    }
-    
-    ::-webkit-scrollbar-thumb:hover {
-        background: #555;
-    }
-    
-    /* Loading animation */
-    .loading-spinner {
-        display: inline-block;
-        width: 20px;
-        height: 20px;
-        border: 2px solid #f3f3f3;
-        border-top: 2px solid #667eea;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
+    /* Avatar icons - optional */
+    .stChatMessageAvatar {
+        display: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -192,16 +164,17 @@ if 'initialized' not in st.session_state:
     st.session_state.messages = []
     st.session_state.interview_active = False
     
-    # Load knowledge base
-    with st.spinner("Initializing AI Tutor..."):
+    # Suppress the "Added documents" message
+    with st.spinner(""):
         st.session_state.rag_engine.load_initial_knowledge()
     
-    # Add welcome message
+    # Initial assistant greeting (minimal)
     st.session_state.messages.append({
         "role": "assistant",
-        "content": "👋 Hello! I'm your AI Data Science Tutor.\n\nI can help you with:\n• 📊 Data Science concepts\n• 🎯 Mock interviews\n• 📝 Assignments\n• 💻 Code generation\n• 🔬 Deep research\n\nWhat would you like to learn today?"
+        "content": "Hello! How can I help you with Data Science today?"
     })
 
+# Helper functions
 def detect_command(message):
     """Detect special commands"""
     message_lower = message.lower().strip()
@@ -246,22 +219,22 @@ def generate_response(user_message):
         
         if command_type == "interview":
             next_q = st.session_state.interview_system.get_next_question()
-            return "🎯 **Interview Mode Active**\n\n" + str(next_q) + "\n\n*Type your answer to continue, or say 'end interview' to stop.*"
+            return f"🎯 **Interview mode**\n\n{next_q}\n\n_(Type your answer, or say 'end interview' to stop)_"
         
         elif command_type == "assignment":
             topic_name = result.get('topic', 'Data Science') if result else 'Data Science'
             q_count = len(result.get('questions', [])) if result else 0
-            return "📝 **Assignment Generated**\n\n**Topic:** " + topic_name + "\n**Questions:** " + str(q_count) + "\n\nYou can download the assignment using the button below."
+            return f"📝 **Assignment generated**\n\nTopic: {topic_name}\nQuestions: {q_count}\n\n[Download button will appear below]"
         
         elif command_type == "code":
             code_text = result.get('code', '') if result else ''
-            return "💻 **Code Generated**\n\n```python\n" + code_text + "\n```"
+            return f"💻 **Code**\n\n```python\n{code_text}\n```"
         
         elif command_type == "research":
             research_report = result.get('report', '')[:800] if result else ''
-            return "🔬 **Research Summary**\n\n" + research_report + "\n\n*Want me to dive deeper? Just ask!*"
+            return f"🔬 **Research summary**\n\n{research_report}"
     
-    # Regular chat - use RAG
+    # Regular chat with RAG
     relevant_docs = st.session_state.rag_engine.search(user_message, n_results=3)
     context = "\n\n".join([doc['text'] for doc in relevant_docs])
     
@@ -276,13 +249,13 @@ def generate_response(user_message):
     
     return response
 
-# Main chat interface
+# Main chat interface - display all messages
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Chat input
-if prompt := st.chat_input("Ask me anything about Data Science, ML, Gen AI, or Agentic AI..."):
+# Chat input (no extra buttons)
+if prompt := st.chat_input("Message Data Science Tutor..."):
     # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
@@ -298,4 +271,4 @@ if prompt := st.chat_input("Ask me anything about Data Science, ML, Gen AI, or A
     st.rerun()
 
 # Minimal footer
-st.markdown('<div class="tech-footer">Made by Himanshu</div>', unsafe_allow_html=True)
+st.markdown('<div class="minimal-footer">Made by Himanshu</div>', unsafe_allow_html=True)
