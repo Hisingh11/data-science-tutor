@@ -1,132 +1,95 @@
 import streamlit as st
-from PIL import Image
-import io
-import os
-from datetime import datetime
-import json
 import re
-
+import os
+import json
+from datetime import datetime
 from utils.model_manager import get_model_manager
 from utils.rag_engine import RAGEngine
 from utils.interview import InterviewSystem
 from utils.assignment import AssignmentManager
 from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
+from utils.auth import register_user, login_user
+from utils.chat_history import create_chat_session, add_message, get_session_messages, get_user_sessions, delete_session
+from utils.image_recognition import analyze_image
 
 # Page config
-st.set_page_config(
-    page_title="Data Science Tutor",
-    page_icon="💬",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for ChatGPT-style minimal UI
+# Custom CSS for modern IDE-like UI
 st.markdown("""
 <style>
-    /* Hide all default Streamlit elements */
+    /* Hide default Streamlit elements */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .stAppHeader {display: none;}
     .stDeployButton {display: none;}
-    .stStatusWidget {display: none;}
     
-    /* Remove padding and center content */
-    .main > div {
-        padding: 0rem;
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #1e1e2f;
+        padding-top: 2rem;
+    }
+    [data-testid="stSidebar"] * {
+        color: #e0e0e0;
+    }
+    .sidebar-header {
+        padding: 1rem;
+        font-size: 1.2rem;
+        font-weight: bold;
+        border-bottom: 1px solid #333;
+        margin-bottom: 1rem;
+    }
+    .chat-history-item {
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        margin-bottom: 0.2rem;
+    }
+    .chat-history-item:hover {
+        background-color: #2a2a3f;
     }
     
-    .block-container {
-        padding-top: 0rem !important;
-        padding-bottom: 0rem !important;
-        max-width: 800px !important;
+    /* Main chat area */
+    .main .block-container {
+        padding: 0 !important;
+        max-width: 1000px !important;
         margin: 0 auto !important;
     }
-    
-    /* Chat messages container */
     .stChatMessage {
         padding: 1rem 1.5rem;
-        margin-bottom: 0rem;
-        border: none;
-        background: transparent;
+        margin-bottom: 0;
     }
-    
-    /* User message - right aligned, light grey */
     .stChatMessageUser {
-        background-color: #f0f2f5;
+        background-color: #2b2d3e;
         border-radius: 1.5rem;
-        margin-left: 2rem;
+        color: #fff;
     }
-    
-    /* Assistant message - left aligned, white */
     .stChatMessageAssistant {
         background-color: transparent;
-        border-radius: 0rem;
-        margin-right: 2rem;
+        color: #e0e0e0;
     }
     
-    /* Chat input container - fixed at bottom */
+    /* Input bar */
     .stChatInputContainer {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
-        background: white;
-        padding: 1rem 2rem 2rem 2rem;
-        border-top: 1px solid #e5e5e5;
+        background: #1e1e2f;
+        padding: 1rem 2rem;
+        border-top: 1px solid #333;
         z-index: 1000;
     }
-    
-    /* Chat input field */
     .stChatInput textarea {
-        border-radius: 1.5rem !important;
-        border: 1px solid #e5e5e5 !important;
-        background: white !important;
-        font-size: 1rem !important;
-        padding: 0.75rem 1.5rem !important;
-        box-shadow: none !important;
+        background-color: #2a2a3f !important;
+        color: white !important;
+        border-radius: 2rem !important;
+        border: 1px solid #444 !important;
     }
     
-    .stChatInput textarea:focus {
-        border-color: #10a37f !important;
-        box-shadow: none !important;
-    }
-    
-    /* Hide the default Streamlit chat input bar */
-    .stChatInput > div {
-        background: transparent !important;
-    }
-    
-    /* Hide any success/warning/info boxes */
-    .stAlert, .element-container:has(.stAlert) {
-        display: none !important;
-    }
-    
-    /* Hide the sidebar toggle button */
-    .st-emotion-cache-1wmy9hl {
-        display: none;
-    }
-    
-    /* Typography */
-    p, div, span {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    }
-    
-    /* Code blocks */
-    pre {
-        background: #1e1e1e !important;
-        padding: 1rem !important;
-        border-radius: 0.5rem !important;
-        overflow-x: auto !important;
-    }
-    
-    code {
-        font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace !important;
-        font-size: 0.85rem !important;
-    }
-    
-    /* Footer - minimal */
+    /* Footer */
     .minimal-footer {
         position: fixed;
         bottom: 0.5rem;
@@ -134,141 +97,161 @@ st.markdown("""
         right: 0;
         text-align: center;
         font-size: 0.7rem;
-        color: #aaa;
+        color: #777;
         background: transparent;
         z-index: 1001;
         pointer-events: none;
     }
-    
-    /* Remove any extra padding from chat list */
-    .stChatMessageContent {
-        padding: 0.25rem 0;
-    }
-    
-    /* Avatar icons - optional */
-    .stChatMessageAvatar {
-        display: none;
-    }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'initialized' not in st.session_state:
-    st.session_state.initialized = True
+# Initialize core components
+if 'core_initialized' not in st.session_state:
     st.session_state.model_manager = get_model_manager()
     st.session_state.rag_engine = RAGEngine()
     st.session_state.interview_system = InterviewSystem(st.session_state.model_manager)
     st.session_state.assignment_manager = AssignmentManager(st.session_state.model_manager)
     st.session_state.code_assistant = CodeAssistant(st.session_state.model_manager)
     st.session_state.research_engine = DeepResearchEngine(st.session_state.model_manager)
-    st.session_state.messages = []
-    st.session_state.interview_active = False
-    
-    # Suppress the "Added documents" message
     with st.spinner(""):
         st.session_state.rag_engine.load_initial_knowledge()
-    
-    # Initial assistant greeting (minimal)
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": "Hello! How can I help you with Data Science today?"
-    })
+    st.session_state.core_initialized = True
 
-# Helper functions
-def detect_command(message):
-    """Detect special commands"""
-    message_lower = message.lower().strip()
-    
-    if re.search(r'^(practice|interview|mock interview)', message_lower):
-        return "interview", None
-    elif re.search(r'^(assignment|generate assignment|create assignment)', message_lower):
-        topic_match = re.search(r'on\s+(\w+)', message_lower)
-        topic = topic_match.group(1) if topic_match else None
-        return "assignment", topic
-    elif re.search(r'^(code|write code|generate code|implement)', message_lower):
-        return "code", message
-    elif re.search(r'^(research|deep research|search)', message_lower):
-        topic = message_lower.replace('research', '').replace('deep research', '').replace('search', '').strip()
-        return "research", topic if topic else None
-    
-    return "chat", message
+# Authentication state
+if 'user_id' not in st.session_state:
+    # Show login/register form
+    st.markdown('<div style="max-width:400px;margin:auto;margin-top:10rem;"><h2>Welcome to Data Science Tutor</h2>', unsafe_allow_html=True)
+    tab1, tab2 = st.tabs(["Login", "Register"])
+    with tab1:
+        username = st.text_input("Username", key="login_username")
+        password = st.text_input("Password", type="password", key="login_password")
+        if st.button("Login"):
+            user = login_user(username, password)
+            if user:
+                st.session_state.user_id, st.session_state.username, st.session_state.full_name = user
+                sessions = get_user_sessions(st.session_state.user_id)
+                if not sessions:
+                    new_id = create_chat_session(st.session_state.user_id, "New Chat")
+                    st.session_state.current_session_id = new_id
+                else:
+                    st.session_state.current_session_id = sessions[0]['id']
+                st.session_state.messages = get_session_messages(st.session_state.current_session_id)
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
+    with tab2:
+        new_username = st.text_input("Username", key="reg_username")
+        new_password = st.text_input("Password", type="password", key="reg_password")
+        fullname = st.text_input("Full Name", key="fullname")
+        if st.button("Register"):
+            ok, msg = register_user(new_username, new_password, fullname)
+            if ok:
+                st.success("Registered! Please login.")
+            else:
+                st.error(msg)
+    st.stop()
 
-def process_command(command_type, content):
-    """Process detected commands"""
-    if command_type == "interview":
-        return st.session_state.interview_system.start_interview("Data Science Fundamentals", "beginner")
-    elif command_type == "assignment":
-        topic = content if content else "Data Science Fundamentals"
-        assignment = st.session_state.assignment_manager.generate_assignment(topic, "intermediate", 10)
-        return assignment
-    elif command_type == "code":
-        result = st.session_state.code_assistant.generate_code(content, "python")
-        return result
-    elif command_type == "research":
-        topic = content if content else "latest developments in AI"
-        research = st.session_state.research_engine.deep_research(topic)
-        return research
-    return None
+# Sidebar – chat history and user info
+with st.sidebar:
+    st.markdown(f"<div class='sidebar-header'>👤 {st.session_state.full_name}</div>", unsafe_allow_html=True)
+    if st.button("➕ New Chat", use_container_width=True):
+        new_id = create_chat_session(st.session_state.user_id, "New Chat")
+        st.session_state.current_session_id = new_id
+        st.session_state.messages = []
+        st.rerun()
+    st.markdown("---")
+    st.markdown("### 📜 History")
+    sessions = get_user_sessions(st.session_state.user_id)
+    for sess in sessions:
+        col1, col2 = st.columns([4,1])
+        with col1:
+            if st.button(sess['title'], key=f"session_{sess['id']}", use_container_width=True):
+                st.session_state.current_session_id = sess['id']
+                st.session_state.messages = get_session_messages(sess['id'])
+                st.rerun()
+        with col2:
+            if st.button("🗑️", key=f"del_{sess['id']}"):
+                delete_session(sess['id'])
+                remaining = get_user_sessions(st.session_state.user_id)
+                if remaining:
+                    st.session_state.current_session_id = remaining[0]['id']
+                    st.session_state.messages = get_session_messages(remaining[0]['id'])
+                else:
+                    new_id = create_chat_session(st.session_state.user_id, "New Chat")
+                    st.session_state.current_session_id = new_id
+                    st.session_state.messages = []
+                st.rerun()
+    st.markdown("---")
+    if st.button("🚪 Logout", use_container_width=True):
+        for key in ['user_id', 'username', 'full_name', 'messages', 'current_session_id']:
+            if key in st.session_state:
+                del st.session_state[key]
+        st.rerun()
 
-def generate_response(user_message):
-    """Generate AI response"""
-    command_type, command_content = detect_command(user_message)
-    
-    if command_type != "chat":
-        result = process_command(command_type, command_content)
-        
-        if command_type == "interview":
-            next_q = st.session_state.interview_system.get_next_question()
-            return f"🎯 **Interview mode**\n\n{next_q}\n\n_(Type your answer, or say 'end interview' to stop)_"
-        
-        elif command_type == "assignment":
-            topic_name = result.get('topic', 'Data Science') if result else 'Data Science'
-            q_count = len(result.get('questions', [])) if result else 0
-            return f"📝 **Assignment generated**\n\nTopic: {topic_name}\nQuestions: {q_count}\n\n[Download button will appear below]"
-        
-        elif command_type == "code":
-            code_text = result.get('code', '') if result else ''
-            return f"💻 **Code**\n\n```python\n{code_text}\n```"
-        
-        elif command_type == "research":
-            research_report = result.get('report', '')[:800] if result else ''
-            return f"🔬 **Research summary**\n\n{research_report}"
-    
-    # Regular chat with RAG
-    relevant_docs = st.session_state.rag_engine.search(user_message, n_results=3)
+# Main chat area
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+    if st.session_state.get('current_session_id'):
+        st.session_state.messages = get_session_messages(st.session_state.current_session_id)
+
+# Display existing messages
+for msg in st.session_state.messages:
+    with st.chat_message(msg["role"]):
+        st.markdown(msg["content"])
+        if msg.get("attachments"):
+            for att in msg["attachments"]:
+                if att.endswith(('.png','.jpg','.jpeg','.gif')):
+                    st.image(att, width=200)
+                else:
+                    st.caption(f"📎 {os.path.basename(att)}")
+
+# Input area with attachment
+with st.container():
+    col1, col2 = st.columns([0.9, 0.1])
+    with col1:
+        prompt = st.chat_input("Message Data Science Tutor...")
+    with col2:
+        uploaded_file = st.file_uploader("📎", type=["png","jpg","jpeg","pdf","txt"], key="attached_file", label_visibility="collapsed")
+
+# Process user input
+if prompt or uploaded_file:
+    user_content = prompt if prompt else ""
+    attachments = []
+    image_description = ""
+
+    if uploaded_file:
+        os.makedirs(f"./data/uploads/{st.session_state.user_id}", exist_ok=True)
+        file_path = f"./data/uploads/{st.session_state.user_id}/{uploaded_file.name}"
+        with open(file_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        attachments.append(file_path)
+
+        if uploaded_file.type.startswith("image/"):
+            with st.spinner("Analyzing image..."):
+                image_description = analyze_image(file_path, "Describe this image in detail. If it contains code or text, extract it.")
+            if image_description:
+                user_content += f"\n\n[Image analysis]: {image_description}"
+
+    # Save user message
+    add_message(st.session_state.current_session_id, "user", user_content, attachments)
+    st.session_state.messages.append({"role": "user", "content": user_content, "attachments": attachments})
+
+    # Generate assistant response (RAG + optional image context)
+    full_prompt = user_content
+    if image_description:
+        full_prompt = f"{image_description}\n\nUser query: {prompt if prompt else ''}"
+    relevant_docs = st.session_state.rag_engine.search(full_prompt, n_results=3)
     context = "\n\n".join([doc['text'] for doc in relevant_docs])
-    
-    if context and len(context) > 100:
-        response = st.session_state.model_manager.generate_with_context(
-            user_message, context, "reasoning", 0.7
-        )
+    if context:
+        assistant_reply = st.session_state.model_manager.generate_with_context(full_prompt, context, "reasoning", 0.7)
     else:
-        response = st.session_state.model_manager.generate(
-            user_message, "reasoning", 0.7
-        )
-    
-    return response
+        assistant_reply = st.session_state.model_manager.generate(full_prompt, "reasoning", 0.7)
 
-# Main chat interface - display all messages
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    # Save assistant message
+    add_message(st.session_state.current_session_id, "assistant", assistant_reply, [])
+    st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
 
-# Chat input (no extra buttons)
-if prompt := st.chat_input("Message Data Science Tutor..."):
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    
-    # Generate assistant response
-    with st.chat_message("assistant"):
-        with st.spinner(""):
-            response = generate_response(prompt)
-            st.markdown(response)
-    
-    st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
 
-# Minimal footer
+# Footer
 st.markdown('<div class="minimal-footer">Made by Himanshu</div>', unsafe_allow_html=True)

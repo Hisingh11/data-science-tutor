@@ -7,3 +7,12 @@ duckduckgo-search
 reportlab
 pypdf
 numpy
+sqlalchemy
+python-multipart
+requests
+
+
+
+
+
+
