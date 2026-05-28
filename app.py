@@ -70,7 +70,7 @@ def login_user(username: str, password: str):
               (username, hash_password(password)))
     row = c.fetchone()
     conn.close()
-    return row  # (id, username, full_name) or None
+    return row
 
 def create_chat_session(user_id: int, title: str = "New Chat"):
     conn = sqlite3.connect(DB_PATH)
@@ -118,7 +118,7 @@ def delete_session(session_id: int):
     conn.close()
 
 # ----------------------------------------------------------------------
-#  Core AI components (your existing ones)
+#  Core AI components
 # ----------------------------------------------------------------------
 from utils.model_manager import get_model_manager
 from utils.rag_engine import RAGEngine
@@ -130,23 +130,120 @@ from utils.image_recognition import analyze_image
 
 st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
 
+# Clean modern UI with paperclip
 st.markdown("""
 <style>
+    /* Hide Streamlit default elements */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .stAppHeader {display: none;}
     .stDeployButton {display: none;}
-    [data-testid="stSidebar"] { background-color: #1e1e2f; padding-top: 2rem; }
-    [data-testid="stSidebar"] * { color: #e0e0e0; }
-    .sidebar-header { padding: 1rem; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid #333; margin-bottom: 1rem; }
-    .main .block-container { padding: 0 !important; max-width: 1000px !important; margin: 0 auto !important; }
-    .stChatMessage { padding: 1rem 1.5rem; margin-bottom: 0; }
-    .stChatMessageUser { background-color: #2b2d3e; border-radius: 1.5rem; color: #fff; }
-    .stChatMessageAssistant { background-color: transparent; color: #e0e0e0; }
-    .stChatInputContainer { position: fixed; bottom: 0; left: 0; right: 0; background: #1e1e2f; padding: 1rem 2rem; border-top: 1px solid #333; z-index: 1000; }
-    .stChatInput textarea { background-color: #2a2a3f !important; color: white !important; border-radius: 2rem !important; border: 1px solid #444 !important; }
-    .minimal-footer { position: fixed; bottom: 0.5rem; left: 0; right: 0; text-align: center; font-size: 0.7rem; color: #777; background: transparent; z-index: 1001; pointer-events: none; }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #1e1e2f;
+        padding-top: 2rem;
+    }
+    [data-testid="stSidebar"] * {
+        color: #e0e0e0;
+    }
+    .sidebar-header {
+        padding: 1rem;
+        font-size: 1.2rem;
+        font-weight: bold;
+        border-bottom: 1px solid #333;
+        margin-bottom: 1rem;
+    }
+
+    /* Main chat area */
+    .main .block-container {
+        padding: 1rem 1rem 5rem 1rem !important;
+        max-width: 900px !important;
+        margin: 0 auto !important;
+    }
+
+    /* Message bubbles */
+    .stChatMessage {
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        border-radius: 1.25rem;
+        max-width: 85%;
+    }
+    .stChatMessageUser {
+        background-color: #2b2d3e;
+        color: #fff;
+        margin-left: auto;
+        border-bottom-right-radius: 0.25rem;
+    }
+    .stChatMessageAssistant {
+        background-color: #f0f2f5;
+        color: #111;
+        margin-right: auto;
+        border-bottom-left-radius: 0.25rem;
+    }
+
+    /* Input row with paperclip */
+    .input-row {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #1e1e2f;
+        padding: 0.75rem 1.5rem;
+        border-top: 1px solid #333;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        z-index: 1000;
+    }
+    .stChatInputContainer {
+        flex: 1;
+    }
+    .stChatInput textarea {
+        background-color: #2a2a3f !important;
+        color: white !important;
+        border-radius: 2rem !important;
+        border: 1px solid #444 !important;
+        font-size: 0.9rem !important;
+        padding: 0.5rem 1rem !important;
+    }
+    .paperclip-btn {
+        background: #2a2a3f;
+        border: none;
+        border-radius: 2rem;
+        padding: 0.5rem 0.9rem;
+        color: #ccc;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: 0.2s;
+    }
+    .paperclip-btn:hover {
+        background: #3a3a4f;
+        color: white;
+    }
+    /* Hide default file uploader label */
+    .stFileUploader > div:first-child {
+        display: none;
+    }
+    .stFileUploader {
+        margin: 0;
+        padding: 0;
+        width: auto;
+    }
+    /* Footer */
+    .minimal-footer {
+        position: fixed;
+        bottom: 0.25rem;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 0.7rem;
+        color: #777;
+        background: transparent;
+        z-index: 1001;
+        pointer-events: none;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -162,7 +259,6 @@ if 'core_initialized' not in st.session_state:
         st.session_state.rag_engine.load_initial_knowledge()
     st.session_state.core_initialized = True
 
-# Guest mode helper
 def create_guest_session():
     guest_id = f"guest_{uuid.uuid4().hex[:8]}"
     st.session_state.user_id = guest_id
@@ -173,7 +269,7 @@ def create_guest_session():
     st.session_state.messages = []
     st.rerun()
 
-# Authentication UI
+# Authentication
 if 'user_id' not in st.session_state:
     st.markdown('<div style="max-width:450px;margin:auto;margin-top:5rem;"><h2 style="text-align:center;">🎓 Data Science Tutor</h2>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
@@ -258,7 +354,7 @@ with st.sidebar:
             if k in st.session_state: del st.session_state[k]
         st.rerun()
 
-# Chat area
+# Chat messages
 if 'messages' not in st.session_state:
     st.session_state.messages = []
     if not st.session_state.get('is_guest') and st.session_state.get('current_session_id'):
@@ -274,14 +370,22 @@ for msg in st.session_state.messages:
                 else:
                     st.caption(f"📎 {os.path.basename(a)}")
 
-# Input row
+# Custom input row with paperclip
 with st.container():
-    col1, col2 = st.columns([0.9,0.1])
-    with col1:
+    # We'll use a custom HTML + Streamlit columns trick to place a file uploader inline
+    col_input, col_attach = st.columns([0.85, 0.15])
+    with col_input:
         prompt = st.chat_input("Message Data Science Tutor...")
-    with col2:
-        uploaded_file = st.file_uploader("📎", type=["png","jpg","jpeg","pdf","txt"], key="attached_file", label_visibility="collapsed")
+    with col_attach:
+        # Hidden label, only icon
+        uploaded_file = st.file_uploader(
+            "📎", 
+            type=["png","jpg","jpeg","pdf","txt"],
+            key="paperclip_upload",
+            label_visibility="collapsed"
+        )
 
+# Process input
 if prompt or uploaded_file:
     user_content = prompt if prompt else ""
     attachments = []
