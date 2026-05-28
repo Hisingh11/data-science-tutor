@@ -3,18 +3,20 @@ import re
 import os
 import json
 from datetime import datetime
+import uuid
 from utils.model_manager import get_model_manager
 from utils.rag_engine import RAGEngine
 from utils.interview import InterviewSystem
 from utils.assignment import AssignmentManager
 from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
-from utils.auth import register_user, login_user
+from utils.auth_db import register_user, login_user
 from utils.chat_history import create_chat_session, add_message, get_session_messages, get_user_sessions, delete_session
 from utils.image_recognition import analyze_image
 
 st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
 
+# --- Custom CSS (same as before, clean) ---
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
@@ -35,6 +37,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# --- Initialize core components ---
 if 'core_initialized' not in st.session_state:
     st.session_state.model_manager = get_model_manager()
     st.session_state.rag_engine = RAGEngine()
@@ -46,17 +49,39 @@ if 'core_initialized' not in st.session_state:
         st.session_state.rag_engine.load_initial_knowledge()
     st.session_state.core_initialized = True
 
-# Authentication
+# --- Authentication & Guest Mode ---
+def create_guest_session():
+    guest_id = f"guest_{uuid.uuid4().hex[:8]}"
+    st.session_state.user_id = guest_id
+    st.session_state.username = "Guest"
+    st.session_state.full_name = "Guest User"
+    st.session_state.is_guest = True
+    # Create a temporary session ID (not stored in DB)
+    st.session_state.current_session_id = f"guest_session_{uuid.uuid4().hex[:8]}"
+    st.session_state.messages = []
+    st.session_state.temp_chat_history = []  # for guest
+    st.rerun()
+
 if 'user_id' not in st.session_state:
-    st.markdown('<div style="max-width:400px;margin:auto;margin-top:10rem;"><h2>Welcome to Data Science Tutor</h2>', unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["Login", "Register"])
+    st.markdown('<div style="max-width:450px;margin:auto;margin-top:5rem;"><h2 style="text-align:center;">🎓 Data Science Tutor</h2>', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🚪 Continue as Guest", use_container_width=True):
+            create_guest_session()
+    with col2:
+        st.markdown("#### or")
+    
+    tab1, tab2 = st.tabs(["🔐 Login", "📝 Register"])
+    
     with tab1:
         username = st.text_input("Username", key="login_username")
         password = st.text_input("Password", type="password", key="login_password")
-        if st.button("Login"):
+        if st.button("Login", type="primary"):
             user = login_user(username, password)
             if user:
                 st.session_state.user_id, st.session_state.username, st.session_state.full_name = user
+                st.session_state.is_guest = False
                 sessions = get_user_sessions(st.session_state.user_id)
                 if not sessions:
                     new_id = create_chat_session(st.session_state.user_id, "New Chat")
@@ -66,60 +91,84 @@ if 'user_id' not in st.session_state:
                 st.session_state.messages = get_session_messages(st.session_state.current_session_id)
                 st.rerun()
             else:
-                st.error("Invalid credentials")
+                st.error("❌ Invalid username or password. Please register first or use Guest mode.")
+    
     with tab2:
         new_username = st.text_input("Username", key="reg_username")
         new_password = st.text_input("Password", type="password", key="reg_password")
         fullname = st.text_input("Full Name", key="fullname")
+        email = st.text_input("Email (optional)", key="email")
         if st.button("Register"):
-            ok, msg = register_user(new_username, new_password, fullname)
-            if ok:
-                st.success("Registered! Please login.")
+            if new_username and new_password:
+                ok, msg = register_user(new_username, new_password, fullname)
+                if ok:
+                    st.success("✅ Registration successful! Please login.")
+                else:
+                    st.error(msg)
             else:
-                st.error(msg)
+                st.warning("Username and password required.")
+    
+    st.markdown("---")
+    st.markdown("### 🔑 Social Login (coming soon)")
+    col_soc1, col_soc2 = st.columns(2)
+    with col_soc1:
+        st.button("🅶 Sign in with Google", disabled=True, help="Will be available soon")
+    with col_soc2:
+        st.button("🐙 Sign in with GitHub", disabled=True, help="Will be available soon")
+    
     st.stop()
 
-# Sidebar
+# --- Sidebar (adapted for guest) ---
 with st.sidebar:
-    st.markdown(f"<div class='sidebar-header'>👤 {st.session_state.full_name}</div>", unsafe_allow_html=True)
-    if st.button("➕ New Chat", use_container_width=True):
-        new_id = create_chat_session(st.session_state.user_id, "New Chat")
-        st.session_state.current_session_id = new_id
-        st.session_state.messages = []
-        st.rerun()
-    st.markdown("---")
-    st.markdown("### 📜 History")
-    sessions = get_user_sessions(st.session_state.user_id)
-    for sess in sessions:
-        col1, col2 = st.columns([4,1])
-        with col1:
-            if st.button(sess['title'], key=f"session_{sess['id']}", use_container_width=True):
-                st.session_state.current_session_id = sess['id']
-                st.session_state.messages = get_session_messages(sess['id'])
-                st.rerun()
-        with col2:
-            if st.button("🗑️", key=f"del_{sess['id']}"):
-                delete_session(sess['id'])
-                remaining = get_user_sessions(st.session_state.user_id)
-                if remaining:
-                    st.session_state.current_session_id = remaining[0]['id']
-                    st.session_state.messages = get_session_messages(remaining[0]['id'])
-                else:
-                    new_id = create_chat_session(st.session_state.user_id, "New Chat")
-                    st.session_state.current_session_id = new_id
-                    st.session_state.messages = []
-                st.rerun()
-    st.markdown("---")
+    st.markdown(f"<div class='sidebar-header'>👤 {st.session_state.full_name} { '(Guest)' if st.session_state.get('is_guest') else ''}</div>", unsafe_allow_html=True)
+    
+    if not st.session_state.get('is_guest'):
+        if st.button("➕ New Chat", use_container_width=True):
+            new_id = create_chat_session(st.session_state.user_id, "New Chat")
+            st.session_state.current_session_id = new_id
+            st.session_state.messages = get_session_messages(new_id)
+            st.rerun()
+        st.markdown("---")
+        st.markdown("### 📜 History")
+        sessions = get_user_sessions(st.session_state.user_id)
+        for sess in sessions:
+            col1, col2 = st.columns([4,1])
+            with col1:
+                if st.button(sess['title'], key=f"session_{sess['id']}", use_container_width=True):
+                    st.session_state.current_session_id = sess['id']
+                    st.session_state.messages = get_session_messages(sess['id'])
+                    st.rerun()
+            with col2:
+                if st.button("🗑️", key=f"del_{sess['id']}"):
+                    delete_session(sess['id'])
+                    remaining = get_user_sessions(st.session_state.user_id)
+                    if remaining:
+                        st.session_state.current_session_id = remaining[0]['id']
+                        st.session_state.messages = get_session_messages(remaining[0]['id'])
+                    else:
+                        new_id = create_chat_session(st.session_state.user_id, "New Chat")
+                        st.session_state.current_session_id = new_id
+                        st.session_state.messages = get_session_messages(new_id)
+                    st.rerun()
+        st.markdown("---")
+    else:
+        # Guest mode: only show a note and new chat button that clears messages
+        if st.button("🗑️ Clear Chat", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+        st.info("💡 Guest mode: chat history is not saved permanently.")
+        st.markdown("---")
+    
     if st.button("🚪 Logout", use_container_width=True):
-        for key in ['user_id', 'username', 'full_name', 'messages', 'current_session_id']:
+        for key in ['user_id', 'username', 'full_name', 'messages', 'current_session_id', 'is_guest']:
             if key in st.session_state:
                 del st.session_state[key]
         st.rerun()
 
-# Chat area
+# --- Main chat area ---
 if 'messages' not in st.session_state:
     st.session_state.messages = []
-    if st.session_state.get('current_session_id'):
+    if not st.session_state.get('is_guest') and st.session_state.get('current_session_id'):
         st.session_state.messages = get_session_messages(st.session_state.current_session_id)
 
 for msg in st.session_state.messages:
@@ -132,7 +181,7 @@ for msg in st.session_state.messages:
                 else:
                     st.caption(f"📎 {os.path.basename(att)}")
 
-# Input row
+# --- Input row with file attachment ---
 with st.container():
     col1, col2 = st.columns([0.9, 0.1])
     with col1:
@@ -146,8 +195,13 @@ if prompt or uploaded_file:
     image_description = ""
 
     if uploaded_file:
-        os.makedirs(f"./data/uploads/{st.session_state.user_id}", exist_ok=True)
-        file_path = f"./data/uploads/{st.session_state.user_id}/{uploaded_file.name}"
+        # For guest, store temporarily in ./data/guest_uploads
+        if st.session_state.get('is_guest'):
+            os.makedirs("./data/guest_uploads", exist_ok=True)
+            file_path = f"./data/guest_uploads/{uploaded_file.name}"
+        else:
+            os.makedirs(f"./data/uploads/{st.session_state.user_id}", exist_ok=True)
+            file_path = f"./data/uploads/{st.session_state.user_id}/{uploaded_file.name}"
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         attachments.append(file_path)
@@ -158,9 +212,14 @@ if prompt or uploaded_file:
             if image_description:
                 user_content += "\n\n[Image analysis]: " + image_description
 
-    add_message(st.session_state.current_session_id, "user", user_content, attachments)
-    st.session_state.messages.append({"role": "user", "content": user_content, "attachments": attachments})
+    # Save message (guest: only in session, not in DB)
+    if st.session_state.get('is_guest'):
+        st.session_state.messages.append({"role": "user", "content": user_content, "attachments": attachments})
+    else:
+        add_message(st.session_state.current_session_id, "user", user_content, attachments)
+        st.session_state.messages.append({"role": "user", "content": user_content, "attachments": attachments})
 
+    # Generate assistant response
     full_prompt = user_content
     if image_description:
         full_prompt = image_description + "\n\nUser query: " + (prompt if prompt else "")
@@ -171,8 +230,12 @@ if prompt or uploaded_file:
     else:
         assistant_reply = st.session_state.model_manager.generate(full_prompt, "reasoning", 0.7)
 
-    add_message(st.session_state.current_session_id, "assistant", assistant_reply, [])
-    st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+    if st.session_state.get('is_guest'):
+        st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+    else:
+        add_message(st.session_state.current_session_id, "assistant", assistant_reply, [])
+        st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
+
     st.rerun()
 
 st.markdown('<div class="minimal-footer">Made by Himanshu</div>', unsafe_allow_html=True)
