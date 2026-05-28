@@ -1,6 +1,6 @@
 import json
 from utils.database import SessionLocal, ChatSession, ChatMessage
-from datetime import datetime
+from datetime import datetime, timezone
 
 def create_chat_session(user_id: int, title: str = "New Chat"):
     db = SessionLocal()
@@ -16,7 +16,7 @@ def add_message(session_id: int, role: str, content: str, attachments: list = No
     attachments_json = json.dumps(attachments or [])
     msg = ChatMessage(session_id=session_id, role=role, content=content, attachments=attachments_json)
     db.add(msg)
-    db.query(ChatSession).filter(ChatSession.id == session_id).update({"updated_at": datetime.utcnow()})
+    db.query(ChatSession).filter(ChatSession.id == session_id).update({"updated_at": datetime.now(timezone.utc)})
     db.commit()
     db.close()
 

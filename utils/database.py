@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 Base = declarative_base()
@@ -11,7 +11,7 @@ class User(Base):
     username = Column(String(50), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     full_name = Column(String(100))
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     chats = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
 
 class ChatSession(Base):
@@ -19,8 +19,8 @@ class ChatSession(Base):
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id'))
     title = Column(String(200), default="New Chat")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     user = relationship("User", back_populates="chats")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
 
@@ -30,8 +30,8 @@ class ChatMessage(Base):
     session_id = Column(Integer, ForeignKey('chat_sessions.id'))
     role = Column(String(20))
     content = Column(Text)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    attachments = Column(Text)  # JSON list
+    timestamp = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    attachments = Column(Text)
     session = relationship("ChatSession", back_populates="messages")
 
 os.makedirs("./data", exist_ok=True)

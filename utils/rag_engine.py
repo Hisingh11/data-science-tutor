@@ -10,21 +10,17 @@ class RAGEngine:
         self.documents = []
     
     def add_documents(self, documents: List[Dict]):
-        """Add documents to in‑memory knowledge base"""
         for doc in documents:
             self.documents.append({
                 "text": doc['text'],
                 "metadata": doc.get('metadata', {})
             })
-        # No success message – keep UI clean
     
     def search(self, query: str, n_results: int = 5) -> List[Dict]:
-        """Simple keyword‑based search"""
         query_lower = query.lower()
         results = []
         for doc in self.documents:
             text_lower = doc['text'].lower()
-            # Count matching words
             score = sum(1 for word in query_lower.split() if word in text_lower)
             if score > 0:
                 results.append({
@@ -36,7 +32,6 @@ class RAGEngine:
         return results[:n_results]
     
     def load_initial_knowledge(self):
-        """Load initial knowledge base"""
         knowledge_docs = [
             {"text": "Data Science Lifecycle: Problem Definition, Data Collection, Data Cleaning, EDA, Feature Engineering, Model Selection, Training, Evaluation, Deployment, Monitoring", "metadata": {"topic": "Data Science"}},
             {"text": "Machine Learning: Supervised (Regression, Classification), Unsupervised (Clustering, PCA), Evaluation Metrics (MSE, Accuracy, F1, AUC-ROC)", "metadata": {"topic": "ML"}},

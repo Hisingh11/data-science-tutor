@@ -1,6 +1,6 @@
 import hashlib
 from utils.database import SessionLocal, User
-from datetime import datetime
+from datetime import datetime, timezone
 
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -15,7 +15,7 @@ def register_user(username: str, password: str, full_name: str = ""):
         username=username,
         password_hash=hash_password(password),
         full_name=full_name,
-        created_at=datetime.utcnow()
+        created_at=datetime.now(timezone.utc)
     )
     db.add(user)
     db.commit()
