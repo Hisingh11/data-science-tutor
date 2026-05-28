@@ -373,4 +373,4 @@ if prompt := st.chat_input("Ask me anything about Data Science, ML, Gen AI, or A
     st.rerun()
 
 # Floating footer
-st.markdown('<div class="footer">Made with ❤️ by Himanshu | Powered by Groq AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer">Made by Himanshu | Powered by Groq AI</div>', unsafe_allow_html=True)
