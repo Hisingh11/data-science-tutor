@@ -130,9 +130,8 @@ from utils.image_recognition import analyze_image
 
 st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
 
-# Clean modern UI with paperclip
-st.markdown("""
-st.markdown("""
+# Clean modern UI with white input field
+css_code = """
 <style>
     /* Hide Streamlit default elements */
     #MainMenu {visibility: hidden;}
@@ -204,7 +203,7 @@ st.markdown("""
         border-top: 1px solid #e0e0e0 !important;
     }
 
-    /* Paperclip button area (if using custom file uploader) */
+    /* Hide default file uploader label */
     .stFileUploader > div:first-child {
         display: none;
     }
@@ -227,7 +226,8 @@ st.markdown("""
         pointer-events: none;
     }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(css_code, unsafe_allow_html=True)
 
 # Core models
 if 'core_initialized' not in st.session_state:
@@ -352,14 +352,12 @@ for msg in st.session_state.messages:
                 else:
                     st.caption(f"📎 {os.path.basename(a)}")
 
-# Custom input row with paperclip
+# Input row with paperclip
 with st.container():
-    # We'll use a custom HTML + Streamlit columns trick to place a file uploader inline
     col_input, col_attach = st.columns([0.85, 0.15])
     with col_input:
         prompt = st.chat_input("Message Data Science Tutor...")
     with col_attach:
-        # Hidden label, only icon
         uploaded_file = st.file_uploader(
             "📎", 
             type=["png","jpg","jpeg","pdf","txt"],
