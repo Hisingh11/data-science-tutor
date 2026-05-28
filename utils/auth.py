@@ -10,7 +10,7 @@ def register_user(username: str, password: str, full_name: str = ""):
     existing = db.query(User).filter(User.username == username).first()
     if existing:
         db.close()
-        return False, "Username exists"
+        return False, "Username already exists"
     user = User(
         username=username,
         password_hash=hash_password(password),

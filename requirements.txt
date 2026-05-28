@@ -7,3 +7,5 @@ reportlab
 pypdf
 sqlalchemy
 python-multipart
+streamlit
+groq
