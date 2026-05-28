@@ -132,7 +132,7 @@ from utils.image_recognition import analyze_image
 st.set_page_config(page_title="Data Scientist BOT", page_icon="🤖", layout="wide", initial_sidebar_state="expanded")
 # =======================================
 
-# Clean modern UI with white input field
+# Clean modern UI with white input field and visible sidebar buttons
 css_code = """
 <style>
     /* Hide Streamlit default elements */
@@ -156,6 +156,24 @@ css_code = """
         font-weight: bold;
         border-bottom: 1px solid #333;
         margin-bottom: 1rem;
+    }
+
+    /* Sidebar buttons – make text white and visible */
+    [data-testid="stSidebar"] .stButton button {
+        background-color: #2a2a3f;
+        color: white !important;
+        border: 1px solid #444;
+        border-radius: 0.5rem;
+        font-weight: 500;
+        transition: 0.2s;
+    }
+    [data-testid="stSidebar"] .stButton button:hover {
+        background-color: #3a3a4f;
+        border-color: #667eea;
+    }
+    [data-testid="stSidebar"] .stAlert {
+        background-color: #2a2a3f;
+        color: #ddd;
     }
 
     /* Main chat area */
@@ -203,7 +221,7 @@ css_code = """
         border-top: 1px solid #e0e0e0 !important;
     }
 
-    /* File uploader */
+    /* File uploader (paperclip) */
     .stFileUploader > div:first-child {
         display: none;
     }
@@ -253,7 +271,6 @@ def create_guest_session():
 
 # Authentication
 if 'user_id' not in st.session_state:
-    # New heading with robot emoji
     st.markdown('<div style="max-width:450px;margin:auto;margin-top:5rem;"><h2 style="text-align:center;">🤖 Data Scientist BOT</h2>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
@@ -295,10 +312,8 @@ if 'user_id' not in st.session_state:
                 st.warning("Username and password required.")
     st.stop()
 
-# Sidebar (optional logo can be added here)
+# Sidebar
 with st.sidebar:
-    # You can add a logo image here – replace with your own URL or local file
-    # st.image("https://img.icons8.com/color/96/000000/robot.png", width=60)
     st.markdown(f"<div class='sidebar-header'>🤖 {st.session_state.full_name} { '(Guest)' if st.session_state.get('is_guest') else ''}</div>", unsafe_allow_html=True)
     if not st.session_state.get('is_guest'):
         if st.button("➕ New Chat", use_container_width=True):
