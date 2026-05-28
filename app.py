@@ -13,7 +13,7 @@ from utils.assignment import AssignmentManager
 from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
 
-# Page config - must be first Streamlit command
+# Page config
 st.set_page_config(
     page_title="Data Science Tutor",
     page_icon="🎓",
@@ -21,147 +21,161 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for ChatGPT-style UI
+# Custom CSS for clean technical UI
 st.markdown("""
 <style>
-    /* Hide default Streamlit elements */
+    /* Hide all default Streamlit elements */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
+    .stAppHeader {display: none;}
+    .stDeployButton {display: none;}
     
-    /* Main container */
+    /* Remove padding from main container */
     .main > div {
         padding: 0rem 1rem;
     }
     
-    /* Chat container */
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 4rem !important;
+        max-width: 900px !important;
+        margin: 0 auto !important;
+    }
+    
+    /* Chat message styling */
     .stChatMessage {
         padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 0.5rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1rem;
+        border: none;
     }
     
-    /* User message */
+    /* User message - dark technical style */
     .stChatMessageUser {
-        background-color: #f0f2f6;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: #e0e0e0;
+        border-left: 3px solid #00d4ff;
     }
     
-    /* Assistant message */
+    /* Assistant message - light technical style */
     .stChatMessageAssistant {
-        background-color: #ffffff;
+        background: linear-gradient(135deg, #f5f5f7 0%, #e8e8ec 100%);
+        color: #1a1a2e;
+        border-left: 3px solid #667eea;
     }
     
-    /* Hide sidebar toggle button */
-    .st-emotion-cache-1wmy9hl {
-        display: none;
-    }
-    
-    /* Center the chat input */
+    /* Chat input container */
     .stChatInputContainer {
-        padding: 1rem;
-        background: white;
-        border-top: 1px solid #e5e5e5;
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
+        background: rgba(255,255,255,0.95);
+        backdrop-filter: blur(10px);
+        padding: 1rem 2rem;
+        border-top: 1px solid rgba(0,0,0,0.1);
         z-index: 1000;
     }
     
-    /* Main content area with padding for fixed input */
-    .main .block-container {
-        padding-bottom: 100px;
+    /* Chat input styling */
+    .stChatInput input {
+        border-radius: 2rem !important;
+        border: 1px solid #e0e0e0 !important;
+        padding: 0.75rem 1.5rem !important;
+        font-size: 1rem !important;
+        background: white !important;
     }
     
-    /* Welcome header */
-    .welcome-header {
-        text-align: center;
-        padding: 2rem;
+    .stChatInput input:focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 2px rgba(102,126,234,0.1) !important;
+    }
+    
+    /* Button styling */
+    .stButton button {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 1rem;
         color: white;
-        margin-bottom: 2rem;
+        border: none;
+        border-radius: 2rem;
+        padding: 0.5rem 1rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
     }
     
-    /* Command chips */
-    .command-chip {
-        display: inline-block;
-        background: #f0f2f6;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.8rem;
-        margin: 0.2rem;
-        cursor: pointer;
-        transition: background 0.2s;
-    }
-    
-    .command-chip:hover {
-        background: #e0e2e6;
-    }
-    
-    /* Feature buttons */
-    .feature-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin: 1rem 0;
-    }
-    
-    .feature-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1rem;
-        border-radius: 0.5rem;
-        text-align: center;
-        color: white;
-        cursor: pointer;
-        transition: transform 0.2s;
-    }
-    
-    .feature-card:hover {
+    .stButton button:hover {
         transform: translateY(-2px);
-    }
-    
-    /* Loading animation */
-    .loading-dots {
-        display: inline-block;
-    }
-    
-    .loading-dots:after {
-        content: '...';
-        animation: dots 1.5s steps(4, end) infinite;
-    }
-    
-    @keyframes dots {
-        0%, 20% { content: '.'; }
-        40% { content: '..'; }
-        60%, 100% { content: '...'; }
+        box-shadow: 0 4px 12px rgba(102,126,234,0.3);
     }
     
     /* Code block styling */
     pre {
-        background: #1e1e1e;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        overflow-x: auto;
-        color: #d4d4d4;
+        background: #1e1e1e !important;
+        padding: 1rem !important;
+        border-radius: 0.5rem !important;
+        overflow-x: auto !important;
     }
     
     code {
-        font-family: 'Courier New', monospace;
+        font-family: 'Fira Code', 'Courier New', monospace !important;
+        font-size: 0.85rem !important;
     }
     
-    .footer {
+    /* Typography */
+    h1, h2, h3 {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    
+    /* Footer */
+    .tech-footer {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         text-align: center;
         padding: 0.5rem;
+        font-size: 0.75rem;
+        font-family: 'Fira Code', monospace;
+        color: #888;
         background: rgba(255,255,255,0.9);
-        font-size: 0.8rem;
-        color: #666;
+        backdrop-filter: blur(5px);
         z-index: 999;
-        border-top: 1px solid #e5e5e5;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 3px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    /* Loading animation */
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 2px solid #f3f3f3;
+        border-top: 2px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -177,29 +191,30 @@ if 'initialized' not in st.session_state:
     st.session_state.research_engine = DeepResearchEngine(st.session_state.model_manager)
     st.session_state.messages = []
     st.session_state.interview_active = False
-    st.session_state.assignment_mode = False
-    st.session_state.code_mode = False
-    st.session_state.research_mode = False
     
     # Load knowledge base
     with st.spinner("Initializing AI Tutor..."):
         st.session_state.rag_engine.load_initial_knowledge()
+    
+    # Add welcome message
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": "👋 Hello! I'm your AI Data Science Tutor.\n\nI can help you with:\n• 📊 Data Science concepts\n• 🎯 Mock interviews\n• 📝 Assignments\n• 💻 Code generation\n• 🔬 Deep research\n\nWhat would you like to learn today?"
+    })
 
 def detect_command(message):
-    """Detect special commands in user message"""
+    """Detect special commands"""
     message_lower = message.lower().strip()
     
     if re.search(r'^(practice|interview|mock interview)', message_lower):
         return "interview", None
-    elif re.search(r'start interview', message_lower):
-        return "interview_start", None
     elif re.search(r'^(assignment|generate assignment|create assignment)', message_lower):
         topic_match = re.search(r'on\s+(\w+)', message_lower)
         topic = topic_match.group(1) if topic_match else None
         return "assignment", topic
     elif re.search(r'^(code|write code|generate code|implement)', message_lower):
         return "code", message
-    elif re.search(r'^(research|deep research|search|find out about)', message_lower):
+    elif re.search(r'^(research|deep research|search)', message_lower):
         topic = message_lower.replace('research', '').replace('deep research', '').replace('search', '').strip()
         return "research", topic if topic else None
     
@@ -223,7 +238,7 @@ def process_command(command_type, content):
     return None
 
 def generate_response(user_message):
-    """Generate AI response using RAG"""
+    """Generate AI response"""
     command_type, command_content = detect_command(user_message)
     
     if command_type != "chat":
@@ -231,24 +246,20 @@ def generate_response(user_message):
         
         if command_type == "interview":
             next_q = st.session_state.interview_system.get_next_question()
-            return "🎯 **Interview Mode Activated!**\n\nI'll help you practice with interview questions. Let's start with a question:\n\n**" + str(next_q) + "**\n\nType your answer, and I'll provide feedback. To end the interview, type 'end interview'."
+            return "🎯 **Interview Mode Active**\n\n" + str(next_q) + "\n\n*Type your answer to continue, or say 'end interview' to stop.*"
         
         elif command_type == "assignment":
             topic_name = result.get('topic', 'Data Science') if result else 'Data Science'
             q_count = len(result.get('questions', [])) if result else 0
-            points = result.get('total_points', 0) if result else 0
-            return "📝 **Assignment Generated!**\n\n**Topic:** " + topic_name + "\n**Questions:** " + str(q_count) + "\n**Total Points:** " + str(points) + "\n\nThe assignment has been generated. You can download it using the button below.\n\n💡 *Type 'submit assignment' followed by your answers to get them graded.*"
+            return "📝 **Assignment Generated**\n\n**Topic:** " + topic_name + "\n**Questions:** " + str(q_count) + "\n\nYou can download the assignment using the button below."
         
         elif command_type == "code":
             code_text = result.get('code', '') if result else ''
-            explanation = result.get('full_response', '')[:500] if result else ''
-            return "💻 **Code Generated!**\n\nHere's the code you requested:\n\n```python\n" + code_text + "\n```\n\n**Explanation:** " + explanation + "\n\n💡 *Need help debugging? Paste your code and I'll help fix errors.*"
+            return "💻 **Code Generated**\n\n```python\n" + code_text + "\n```"
         
         elif command_type == "research":
-            research_topic = result.get('topic', 'Topic') if result else 'Topic'
-            research_report = result.get('report', '')[:1000] if result else ''
-            takeaways = result.get('key_takeaways', '') if result else ''
-            return "🔬 **Research Complete!**\n\n## 📄 Research Report: " + research_topic + "\n\n" + research_report + "\n\n**Key Takeaways:**\n" + takeaways + "\n\n💡 *Want me to dive deeper into any specific aspect? Just ask!*"
+            research_report = result.get('report', '')[:800] if result else ''
+            return "🔬 **Research Summary**\n\n" + research_report + "\n\n*Want me to dive deeper? Just ask!*"
     
     # Regular chat - use RAG
     relevant_docs = st.session_state.rag_engine.search(user_message, n_results=3)
@@ -265,112 +276,26 @@ def generate_response(user_message):
     
     return response
 
-# Main UI
-if not st.session_state.messages:
-    st.markdown("""
-    <div class="welcome-header">
-        <h1>🎓 Data Science Tutor</h1>
-        <p>Your Personal AI Assistant for Data Science, ML, Gen AI & Agentic AI</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("### Quick Actions")
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        if st.button("🎯 Practice Interview", use_container_width=True):
-            st.session_state.messages.append({
-                "role": "user",
-                "content": "I want to practice for an interview"
-            })
-            response = generate_response("I want to practice for an interview")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
-    
-    with col2:
-        if st.button("📝 Generate Assignment", use_container_width=True):
-            st.session_state.messages.append({
-                "role": "user",
-                "content": "Generate an assignment on Data Science"
-            })
-            response = generate_response("Generate an assignment on Data Science")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
-    
-    with col3:
-        if st.button("💻 Write Code", use_container_width=True):
-            st.session_state.messages.append({
-                "role": "user",
-                "content": "Help me write code for data analysis"
-            })
-            response = generate_response("Help me write code for data analysis")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
-    
-    with col4:
-        if st.button("🔬 Deep Research", use_container_width=True):
-            st.session_state.messages.append({
-                "role": "user",
-                "content": "Research the latest trends in AI"
-            })
-            response = generate_response("Research the latest trends in AI")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
-    
-    with col5:
-        if st.button("📚 Learn Basics", use_container_width=True):
-            st.session_state.messages.append({
-                "role": "user",
-                "content": "Explain machine learning basics"
-            })
-            response = generate_response("Explain machine learning basics")
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
-    
-    st.markdown("---")
-    st.markdown("### 💡 What can I help you with?")
-    st.markdown("""
-    - **Ask any Data Science question** - Get detailed explanations with examples
-    - **Practice interviews** - Type "practice interview" to start mock interviews
-    - **Generate assignments** - Type "generate assignment on [topic]"
-    - **Write code** - Type "write code for [task]" or "implement [function]"
-    - **Deep research** - Type "research [topic]" for comprehensive analysis
-    - **Debug code** - Paste your code and ask "what's wrong with this code?"
-    """)
-
-# Chat interface
+# Main chat interface
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
 # Chat input
 if prompt := st.chat_input("Ask me anything about Data Science, ML, Gen AI, or Agentic AI..."):
+    # Add user message
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
     
+    # Generate assistant response
     with st.chat_message("assistant"):
-        with st.spinner("Thinking"):
+        with st.spinner(""):
             response = generate_response(prompt)
             st.markdown(response)
     
     st.session_state.messages.append({"role": "assistant", "content": response})
     st.rerun()
 
-# Floating footer
-st.markdown('<div class="footer">Made by Himanshu | Powered by Groq AI</div>', unsafe_allow_html=True)
+# Minimal footer
+st.markdown('<div class="tech-footer">Made by Himanshu</div>', unsafe_allow_html=True)
