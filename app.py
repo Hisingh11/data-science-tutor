@@ -128,7 +128,9 @@ from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
 from utils.image_recognition import analyze_image
 
-st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
+# ========== NEW NAME AND LOGO ==========
+st.set_page_config(page_title="Data Scientist BOT", page_icon="🤖", layout="wide", initial_sidebar_state="expanded")
+# =======================================
 
 # Clean modern UI with white input field
 css_code = """
@@ -183,7 +185,7 @@ css_code = """
         border-bottom-left-radius: 0.25rem;
     }
 
-    /* ----- WHITE INPUT FIELD ----- */
+    /* White input field */
     .stChatInput textarea {
         background-color: white !important;
         color: #1e1e2f !important;
@@ -196,14 +198,12 @@ css_code = """
         border-color: #667eea !important;
         box-shadow: 0 0 0 1px #667eea !important;
     }
-
-    /* Input row container */
     .stChatInputContainer {
         background: #f5f5f5 !important;
         border-top: 1px solid #e0e0e0 !important;
     }
 
-    /* Hide default file uploader label */
+    /* File uploader */
     .stFileUploader > div:first-child {
         display: none;
     }
@@ -253,7 +253,8 @@ def create_guest_session():
 
 # Authentication
 if 'user_id' not in st.session_state:
-    st.markdown('<div style="max-width:450px;margin:auto;margin-top:5rem;"><h2 style="text-align:center;">🎓 Data Science Tutor</h2>', unsafe_allow_html=True)
+    # New heading with robot emoji
+    st.markdown('<div style="max-width:450px;margin:auto;margin-top:5rem;"><h2 style="text-align:center;">🤖 Data Scientist BOT</h2>', unsafe_allow_html=True)
     col1, col2 = st.columns(2)
     with col1:
         if st.button("🚪 Continue as Guest", use_container_width=True):
@@ -294,9 +295,11 @@ if 'user_id' not in st.session_state:
                 st.warning("Username and password required.")
     st.stop()
 
-# Sidebar
+# Sidebar (optional logo can be added here)
 with st.sidebar:
-    st.markdown(f"<div class='sidebar-header'>👤 {st.session_state.full_name} { '(Guest)' if st.session_state.get('is_guest') else ''}</div>", unsafe_allow_html=True)
+    # You can add a logo image here – replace with your own URL or local file
+    # st.image("https://img.icons8.com/color/96/000000/robot.png", width=60)
+    st.markdown(f"<div class='sidebar-header'>🤖 {st.session_state.full_name} { '(Guest)' if st.session_state.get('is_guest') else ''}</div>", unsafe_allow_html=True)
     if not st.session_state.get('is_guest'):
         if st.button("➕ New Chat", use_container_width=True):
             new_id = create_chat_session(st.session_state.user_id, "New Chat")
@@ -356,7 +359,7 @@ for msg in st.session_state.messages:
 with st.container():
     col_input, col_attach = st.columns([0.85, 0.15])
     with col_input:
-        prompt = st.chat_input("Message Data Science Tutor...")
+        prompt = st.chat_input("Message Data Scientist BOT...")
     with col_attach:
         uploaded_file = st.file_uploader(
             "📎", 
