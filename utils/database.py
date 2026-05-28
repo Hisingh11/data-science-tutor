@@ -4,6 +4,7 @@ from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
 import os
 
+from sqlalchemy.orm import declarative_base
 Base = declarative_base()
 
 class User(Base):

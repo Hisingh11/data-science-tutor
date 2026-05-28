@@ -13,99 +13,28 @@ from utils.auth import register_user, login_user
 from utils.chat_history import create_chat_session, add_message, get_session_messages, get_user_sessions, delete_session
 from utils.image_recognition import analyze_image
 
-# Page config
 st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
 
-# Custom CSS for modern IDE-like UI
 st.markdown("""
 <style>
-    /* Hide default Streamlit elements */
     #MainMenu {visibility: hidden;}
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .stAppHeader {display: none;}
     .stDeployButton {display: none;}
-    
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {
-        background-color: #1e1e2f;
-        padding-top: 2rem;
-    }
-    [data-testid="stSidebar"] * {
-        color: #e0e0e0;
-    }
-    .sidebar-header {
-        padding: 1rem;
-        font-size: 1.2rem;
-        font-weight: bold;
-        border-bottom: 1px solid #333;
-        margin-bottom: 1rem;
-    }
-    .chat-history-item {
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-        cursor: pointer;
-        margin-bottom: 0.2rem;
-    }
-    .chat-history-item:hover {
-        background-color: #2a2a3f;
-    }
-    
-    /* Main chat area */
-    .main .block-container {
-        padding: 0 !important;
-        max-width: 1000px !important;
-        margin: 0 auto !important;
-    }
-    .stChatMessage {
-        padding: 1rem 1.5rem;
-        margin-bottom: 0;
-    }
-    .stChatMessageUser {
-        background-color: #2b2d3e;
-        border-radius: 1.5rem;
-        color: #fff;
-    }
-    .stChatMessageAssistant {
-        background-color: transparent;
-        color: #e0e0e0;
-    }
-    
-    /* Input bar */
-    .stChatInputContainer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: #1e1e2f;
-        padding: 1rem 2rem;
-        border-top: 1px solid #333;
-        z-index: 1000;
-    }
-    .stChatInput textarea {
-        background-color: #2a2a3f !important;
-        color: white !important;
-        border-radius: 2rem !important;
-        border: 1px solid #444 !important;
-    }
-    
-    /* Footer */
-    .minimal-footer {
-        position: fixed;
-        bottom: 0.5rem;
-        left: 0;
-        right: 0;
-        text-align: center;
-        font-size: 0.7rem;
-        color: #777;
-        background: transparent;
-        z-index: 1001;
-        pointer-events: none;
-    }
+    [data-testid="stSidebar"] { background-color: #1e1e2f; padding-top: 2rem; }
+    [data-testid="stSidebar"] * { color: #e0e0e0; }
+    .sidebar-header { padding: 1rem; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid #333; margin-bottom: 1rem; }
+    .main .block-container { padding: 0 !important; max-width: 1000px !important; margin: 0 auto !important; }
+    .stChatMessage { padding: 1rem 1.5rem; margin-bottom: 0; }
+    .stChatMessageUser { background-color: #2b2d3e; border-radius: 1.5rem; color: #fff; }
+    .stChatMessageAssistant { background-color: transparent; color: #e0e0e0; }
+    .stChatInputContainer { position: fixed; bottom: 0; left: 0; right: 0; background: #1e1e2f; padding: 1rem 2rem; border-top: 1px solid #333; z-index: 1000; }
+    .stChatInput textarea { background-color: #2a2a3f !important; color: white !important; border-radius: 2rem !important; border: 1px solid #444 !important; }
+    .minimal-footer { position: fixed; bottom: 0.5rem; left: 0; right: 0; text-align: center; font-size: 0.7rem; color: #777; background: transparent; z-index: 1001; pointer-events: none; }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize core components
 if 'core_initialized' not in st.session_state:
     st.session_state.model_manager = get_model_manager()
     st.session_state.rag_engine = RAGEngine()
@@ -117,9 +46,8 @@ if 'core_initialized' not in st.session_state:
         st.session_state.rag_engine.load_initial_knowledge()
     st.session_state.core_initialized = True
 
-# Authentication state
+# Authentication
 if 'user_id' not in st.session_state:
-    # Show login/register form
     st.markdown('<div style="max-width:400px;margin:auto;margin-top:10rem;"><h2>Welcome to Data Science Tutor</h2>', unsafe_allow_html=True)
     tab1, tab2 = st.tabs(["Login", "Register"])
     with tab1:
@@ -151,7 +79,7 @@ if 'user_id' not in st.session_state:
                 st.error(msg)
     st.stop()
 
-# Sidebar – chat history and user info
+# Sidebar
 with st.sidebar:
     st.markdown(f"<div class='sidebar-header'>👤 {st.session_state.full_name}</div>", unsafe_allow_html=True)
     if st.button("➕ New Chat", use_container_width=True):
@@ -188,13 +116,12 @@ with st.sidebar:
                 del st.session_state[key]
         st.rerun()
 
-# Main chat area
+# Chat area
 if 'messages' not in st.session_state:
     st.session_state.messages = []
     if st.session_state.get('current_session_id'):
         st.session_state.messages = get_session_messages(st.session_state.current_session_id)
 
-# Display existing messages
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
@@ -205,7 +132,7 @@ for msg in st.session_state.messages:
                 else:
                     st.caption(f"📎 {os.path.basename(att)}")
 
-# Input area with attachment
+# Input row
 with st.container():
     col1, col2 = st.columns([0.9, 0.1])
     with col1:
@@ -213,7 +140,6 @@ with st.container():
     with col2:
         uploaded_file = st.file_uploader("📎", type=["png","jpg","jpeg","pdf","txt"], key="attached_file", label_visibility="collapsed")
 
-# Process user input
 if prompt or uploaded_file:
     user_content = prompt if prompt else ""
     attachments = []
@@ -230,16 +156,14 @@ if prompt or uploaded_file:
             with st.spinner("Analyzing image..."):
                 image_description = analyze_image(file_path, "Describe this image in detail. If it contains code or text, extract it.")
             if image_description:
-                user_content += f"\n\n[Image analysis]: {image_description}"
+                user_content += "\n\n[Image analysis]: " + image_description
 
-    # Save user message
     add_message(st.session_state.current_session_id, "user", user_content, attachments)
     st.session_state.messages.append({"role": "user", "content": user_content, "attachments": attachments})
 
-    # Generate assistant response (RAG + optional image context)
     full_prompt = user_content
     if image_description:
-        full_prompt = f"{image_description}\n\nUser query: {prompt if prompt else ''}"
+        full_prompt = image_description + "\n\nUser query: " + (prompt if prompt else "")
     relevant_docs = st.session_state.rag_engine.search(full_prompt, n_results=3)
     context = "\n\n".join([doc['text'] for doc in relevant_docs])
     if context:
@@ -247,11 +171,8 @@ if prompt or uploaded_file:
     else:
         assistant_reply = st.session_state.model_manager.generate(full_prompt, "reasoning", 0.7)
 
-    # Save assistant message
     add_message(st.session_state.current_session_id, "assistant", assistant_reply, [])
     st.session_state.messages.append({"role": "assistant", "content": assistant_reply})
-
     st.rerun()
 
-# Footer
 st.markdown('<div class="minimal-footer">Made by Himanshu</div>', unsafe_allow_html=True)
