@@ -132,6 +132,7 @@ st.set_page_config(page_title="Data Science Tutor", page_icon="💬", layout="wi
 
 # Clean modern UI with paperclip
 st.markdown("""
+st.markdown("""
 <style>
     /* Hide Streamlit default elements */
     #MainMenu {visibility: hidden;}
@@ -183,54 +184,35 @@ st.markdown("""
         border-bottom-left-radius: 0.25rem;
     }
 
-    /* Input row with paperclip */
-    .input-row {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        background: #1e1e2f;
-        padding: 0.75rem 1.5rem;
-        border-top: 1px solid #333;
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-        z-index: 1000;
-    }
-    .stChatInputContainer {
-        flex: 1;
-    }
+    /* ----- WHITE INPUT FIELD ----- */
     .stChatInput textarea {
-        background-color: #2a2a3f !important;
-        color: white !important;
+        background-color: white !important;
+        color: #1e1e2f !important;
         border-radius: 2rem !important;
-        border: 1px solid #444 !important;
+        border: 1px solid #ccc !important;
         font-size: 0.9rem !important;
         padding: 0.5rem 1rem !important;
     }
-    .paperclip-btn {
-        background: #2a2a3f;
-        border: none;
-        border-radius: 2rem;
-        padding: 0.5rem 0.9rem;
-        color: #ccc;
-        cursor: pointer;
-        font-size: 1.2rem;
-        transition: 0.2s;
+    .stChatInput textarea:focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 1px #667eea !important;
     }
-    .paperclip-btn:hover {
-        background: #3a3a4f;
-        color: white;
+
+    /* Input row container */
+    .stChatInputContainer {
+        background: #f5f5f5 !important;
+        border-top: 1px solid #e0e0e0 !important;
     }
-    /* Hide default file uploader label */
+
+    /* Paperclip button area (if using custom file uploader) */
     .stFileUploader > div:first-child {
         display: none;
     }
     .stFileUploader {
         margin: 0;
         padding: 0;
-        width: auto;
     }
+
     /* Footer */
     .minimal-footer {
         position: fixed;
