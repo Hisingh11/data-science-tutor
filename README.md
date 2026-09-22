@@ -42,8 +42,6 @@ streamlit run app.py
 GROQ_API_KEY = "your_key_from_https://console.groq.com"
 ```
 
-Accounts and chat history use a local SQLite file. On Streamlit Cloud that file resets when the app restarts, so treat accounts as temporary.
-
 ## Notes
 
 - Chat uses Groq models `openai/gpt-oss-120b` and `openai/gpt-oss-20b`.

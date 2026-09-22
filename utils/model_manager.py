@@ -1,4 +1,4 @@
-import os
+﻿import os
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -70,10 +70,11 @@ class ModelManager:
             return self.init_error or "API key not configured"
         messages = [{"role": "system", "content": TUTOR_SYSTEM}]
         if context:
-            messages.append({
-                "role": "system",
-                "content": "Relevant notes from the knowledge base:\n" + context,
-            })
+            if context.startswith("Retrieval check:"):
+                note = context
+            else:
+                note = "Relevant notes from the knowledge base:\n" + context
+            messages.append({"role": "system", "content": note})
         for msg in (history or [])[-8:]:
             role = msg.get("role")
             content = (msg.get("content") or "").strip()
@@ -86,6 +87,23 @@ class ModelManager:
                 messages=messages,
                 temperature=temperature,
                 max_tokens=4096,
+            )
+            return self._message_text(response)
+        except Exception as exc:
+            return f"Error: {exc}"
+
+    def complete(self, prompt, model_type="fast", temperature=0.0):
+        if not self.client:
+            return self.init_error or "API key not configured"
+        try:
+            response = self.client.chat.completions.create(
+                model=self.models.get(model_type, self.models["fast"]),
+                messages=[
+                    {"role": "system", "content": "Follow the requested output format exactly."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=temperature,
+                max_tokens=1200,
             )
             return self._message_text(response)
         except Exception as exc:
