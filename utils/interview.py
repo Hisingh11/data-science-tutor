@@ -11,6 +11,7 @@ class InterviewSystem:
         self.current_difficulty = None
         self.score = 0
         self.questions_asked = 0
+        self.questions = []
     
     QUESTION_BANK = {
         "Data Science Fundamentals": {
@@ -145,7 +146,13 @@ class InterviewSystem:
         return False
     
     def get_next_question(self):
-        """Get the next interview question"""
+        """Get the next interview question. Safe to call on every rerun."""
+        if not self.questions:
+            return None
+        if self.questions_asked < len(self.interview_history):
+            current = self.interview_history[self.questions_asked]
+            if current["user_answer"] is None:
+                return current["question"]
         if self.questions_asked < len(self.questions):
             question = self.questions[self.questions_asked]
             self.interview_history.append({

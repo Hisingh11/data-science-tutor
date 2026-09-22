@@ -1,7 +1,6 @@
 import os
-import json
+import re
 from typing import List, Dict
-import streamlit as st
 
 class RAGEngine:
     def __init__(self, persist_directory="./data/knowledge_base"):
@@ -17,16 +16,16 @@ class RAGEngine:
             })
     
     def search(self, query: str, n_results: int = 5) -> List[Dict]:
-        query_lower = query.lower()
+        words = [word for word in re.findall(r"[a-z0-9]+", query.lower()) if len(word) > 3]
         results = []
         for doc in self.documents:
             text_lower = doc['text'].lower()
-            score = sum(1 for word in query_lower.split() if word in text_lower)
+            score = sum(1 for word in words if word in text_lower)
             if score > 0:
                 results.append({
                     'text': doc['text'],
                     'metadata': doc['metadata'],
-                    'relevance': score / max(len(query_lower.split()), 1)
+                    'relevance': score / max(len(words), 1)
                 })
         results.sort(key=lambda x: x['relevance'], reverse=True)
         return results[:n_results]

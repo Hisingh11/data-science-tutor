@@ -15,10 +15,8 @@ try:
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
     import io
     REPORTLAB_AVAILABLE = True
-    print("ReportLab imported successfully")
-except ImportError as e:
+except ImportError:
     REPORTLAB_AVAILABLE = False
-    print(f"ReportLab import error: {e}")
 
 class AssignmentManager:
     def __init__(self, model_manager, upload_dir="./uploads", assignments_dir="./assignments"):
@@ -464,24 +462,76 @@ QUESTIONS:
         
         assignment_file = os.path.join(self.assignments_dir, f"{assignment_id}.json")
         if not os.path.exists(assignment_file):
-            return {"error": "Assignment not found"}
+            return {"error": "Assignment not found. Generate an assignment first, then use its ID."}
         
         with open(assignment_file, 'r') as f:
             assignment = json.load(f)
         
+        answer_text = (submission_content or "").strip()
+        if file_content:
+            answer_text = f"{answer_text}\n\n{file_content}".strip()
+        if not answer_text:
+            return {"error": "Paste your answers or upload a .txt or .pdf file."}
+
         total = assignment.get('total_points', 100)
-        earned = int(total * 0.75)
-        
-        return {
-            "total_points": total,
-            "earned_points": earned,
-            "percentage": round((earned / total) * 100, 1),
-            "overall_feedback": "Good effort! To improve, provide more detailed explanations with examples.",
-            "strengths": ["Completed the assignment", "Showed understanding of key concepts"],
-            "weak_areas": ["Need more detailed explanations", "Add more code examples"]
-        }
+        questions = [
+            {"id": q.get("id"), "type": q.get("type"), "points": q.get("points"), "question": q.get("question")}
+            for q in assignment.get("questions", [])
+        ]
+        prompt = f"""Grade this data science assignment.
+Topic: {assignment.get('topic')}
+Difficulty: {assignment.get('difficulty')}
+Total points available: {total}
+Questions:
+{json.dumps(questions, indent=2)[:7000]}
+
+Student submission:
+{answer_text[:8000]}
+
+Return only JSON:
+{{
+  "earned_points": 0,
+  "overall_feedback": "paragraph",
+  "strengths": ["..."],
+  "weak_areas": ["..."]
+}}
+earned_points must be an integer from 0 to {total}."""
+        response = self.model.generate(prompt, "reasoning", 0.2)
+        try:
+            import re
+            match = re.search(r"\{.*\}", response, re.DOTALL)
+            parsed = json.loads(match.group()) if match else {}
+            earned = int(parsed.get("earned_points", 0))
+            earned = max(0, min(total, earned))
+            return {
+                "total_points": total,
+                "earned_points": earned,
+                "percentage": round((earned / total) * 100, 1) if total else 0,
+                "overall_feedback": parsed.get("overall_feedback") or response[:800],
+                "strengths": parsed.get("strengths") or [],
+                "weak_areas": parsed.get("weak_areas") or [],
+            }
+        except Exception:
+            return {
+                "total_points": total,
+                "earned_points": None,
+                "percentage": None,
+                "overall_feedback": response[:1200],
+                "strengths": [],
+                "weak_areas": [],
+            }
     
     def extract_text_from_file(self, uploaded_file) -> str:
-        if uploaded_file.type == "text/plain":
-            return uploaded_file.getvalue().decode("utf-8")
-        return "Please paste your answers as text."
+        name = (uploaded_file.name or "").lower()
+        raw = uploaded_file.getvalue()
+        if uploaded_file.type == "text/plain" or name.endswith(".txt"):
+            return raw.decode("utf-8", errors="replace")
+        if name.endswith(".pdf") or uploaded_file.type == "application/pdf":
+            try:
+                from pypdf import PdfReader
+                import io
+                reader = PdfReader(io.BytesIO(raw))
+                return "\n".join((page.extract_text() or "") for page in reader.pages)
+            except Exception as exc:
+                return f"Could not read that PDF: {exc}"
+        return "Upload a .txt or .pdf file, or paste your answers."

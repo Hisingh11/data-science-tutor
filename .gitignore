@@ -16,7 +16,7 @@ venv.bak/
 # Project specific
 uploads/
 assignments/
-data/knowledge_base/
+data/
 *.db
 *.sqlite
 

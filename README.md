@@ -1,54 +1,51 @@
-# 📚 Data Science Tutor
+# Data Scientist BOT
 
-An AI-powered comprehensive tutoring system for Data Science, Generative AI, and Agentic AI. Features include mock interviews, assignment generation, code assistance, deep research, and intelligent Q&A.
+A Streamlit tutor for data science, machine learning, generative AI, agentic AI, and Python.
 
-## ✨ Features
+## Features
 
-### 💬 AI Chat
-- RAG-enhanced Q&A with knowledge base
-- Context-aware responses with examples
-- Source attribution from knowledge base
+- Chat with conversation memory and a small built-in knowledge base
+- Image, text, and PDF attachments
+- Mock interviews with scoring and a model answer
+- Assignment generator with PDF download and AI grading
+- Code generation and review
+- Web research and fact-checking
 
-### 🎯 Mock Interview
-- Topic-based interviews (Data Science, ML, Gen AI, Agentic AI, Python)
-- Three difficulty levels (Beginner, Intermediate, Advanced)
-- Real-time scoring and feedback
-- Model answers and improvement suggestions
+## Run locally
 
-### 📝 Smart Assignments
-- Generate 10-50 comprehensive questions
-- Three question types: Conceptual, Application, Coding
-- Automatic PDF generation with professional formatting
-- AI-powered grading with detailed feedback
-- Progress tracking across assignments
+Python 3.10 or newer.
 
-### 💻 Code Assistant
-- Code generation with explanations
-- Error detection and debugging
-- Code execution for Python
-- Support for multiple languages
-
-### 🔬 Deep Research
-- Web search using DuckDuckGo
-- Fact-checking with source attribution
-- Comprehensive research reports
-- Key takeaways extraction
-
-### 📖 Knowledge Base
-- Curated content on Data Science topics
-- Vector database for semantic search
-- RAG for enhanced answers
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Python 3.10 or higher
-- Groq API key (free)
-
-### Installation
-
-1. **Clone the repository**
 ```bash
-git clone https://github.com/YOUR_USERNAME/Data_science_tutor.git
-cd Data_science_tutor
+pip install -r requirements.txt
+```
+
+Create a `.env` file in the project folder:
+
+```
+GROQ_API_KEY=your_key_from_https://console.groq.com
+```
+
+```bash
+streamlit run app.py
+```
+
+## Deploy on Streamlit Community Cloud
+
+1. Push this repository to GitHub.
+2. Open [share.streamlit.io](https://share.streamlit.io) and choose **Create app**.
+3. Repository: `Hisingh11/data-science-tutor`
+4. Branch: `main`
+5. Main file: `app.py`
+6. In **Advanced settings → Secrets**, paste:
+
+```toml
+GROQ_API_KEY = "your_key_from_https://console.groq.com"
+```
+
+Accounts and chat history use a local SQLite file. On Streamlit Cloud that file resets when the app restarts, so treat accounts as temporary.
+
+## Notes
+
+- Chat uses Groq models `openai/gpt-oss-120b` and `openai/gpt-oss-20b`.
+- Image attachments use `qwen/qwen3.8-27b`.
+- The code assistant explains and reviews code. It does not execute code on the server.
