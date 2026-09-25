@@ -3,6 +3,7 @@ import json
 import hashlib
 from datetime import datetime
 from typing import Dict, Optional, List
+from xml.sax.saxutils import escape
 
 # Try to import reportlab for PDF generation
 try:
@@ -102,7 +103,7 @@ class AssignmentManager:
             story = []
             
             # Title
-            story.append(Paragraph(f"Assignment: {assignment['topic']}", title_style))
+            story.append(Paragraph(f"Assignment: {escape(str(assignment['topic']))}", title_style))
             story.append(Spacer(1, 0.2*inch))
             
             # Info table
@@ -146,12 +147,12 @@ class AssignmentManager:
             for q in assignment['questions']:
                 q_header = f"<b>Question {q['id']}</b> - Type: {q['type'].upper()} - Points: {q['points']}"
                 story.append(Paragraph(q_header, heading_style))
-                story.append(Paragraph(q['question'], styles['Normal']))
+                story.append(Paragraph(escape(str(q['question'])), styles['Normal']))
                 
                 if q.get('hint'):
-                    story.append(Paragraph(f"<i>💡 Hint: {q['hint']}</i>", styles['Italic']))
+                    story.append(Paragraph(f"<i>Hint: {escape(str(q['hint']))}</i>", styles['Italic']))
                 
-                story.append(Paragraph(f"<i>Expected format: {q.get('expected_format', 'Detailed answer')}</i>", styles['Italic']))
+                story.append(Paragraph(f"<i>Expected format: {escape(str(q.get('expected_format', 'Detailed answer')))}</i>", styles['Italic']))
                 story.append(Spacer(1, 0.15*inch))
                 story.append(Paragraph("Answer:", styles['Normal']))
                 story.append(Spacer(1, 0.4*inch))
@@ -162,8 +163,7 @@ class AssignmentManager:
             buffer.seek(0)
             return buffer.getvalue()
             
-        except Exception as e:
-            print(f"PDF generation error: {e}")
+        except Exception:
             return self._create_text_fallback(assignment)
     
     def _create_text_fallback(self, assignment: Dict) -> bytes:
@@ -439,15 +439,15 @@ QUESTIONS:
         
         return questions[:num_questions]
     
-    def grade_submission(self, assignment_id: str, submission_content: str, file_content: Optional[str] = None) -> Dict:
+    def grade_submission(self, assignment_id: str, submission_content: str, file_content: Optional[str] = None, assignment: Optional[Dict] = None) -> Dict:
         """Grade a student's assignment submission"""
         
         assignment_file = os.path.join(self.assignments_dir, f"{assignment_id}.json")
-        if not os.path.exists(assignment_file):
-            return {"error": "Assignment not found. Generate an assignment first, then use its ID."}
-        
-        with open(assignment_file, 'r') as f:
-            assignment = json.load(f)
+        if os.path.exists(assignment_file):
+            with open(assignment_file, 'r') as f:
+                assignment = json.load(f)
+        elif not assignment or not assignment.get("questions"):
+            return {"error": "Assignment not found. Generate an assignment first, then send grade this: followed by your answers."}
         
         answer_text = (submission_content or "").strip()
         if file_content:

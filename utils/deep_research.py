@@ -12,10 +12,7 @@ class DeepResearchEngine:
 
     def search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
+            from ddgs import DDGS
         except ImportError:
             return [{
                 "title": "Search unavailable",
@@ -50,7 +47,7 @@ class DeepResearchEngine:
             }]
 
     def fact_check(self, claim: str) -> Dict:
-        search_results = self.search_web(claim, max_results=5)
+        search_results = self.search_web(claim[:300], max_results=5)
         context = "\n\n".join(
             f"Source: {result['title']}\nContent: {result['body']}"
             for result in search_results
@@ -60,22 +57,41 @@ class DeepResearchEngine:
             "Return JSON with keys verdict, confidence, explanation. "
             "verdict must be one of supported, contradicted, mixed, unverifiable."
         )
-        response = self.model.generate(prompt, "reasoning", 0.2)
-        try:
-            match = re.search(r"\{.*\}", response, re.DOTALL)
-            if match:
-                parsed = json.loads(match.group())
-                parsed.setdefault("explanation", response[:800])
-                return parsed
-        except Exception:
-            pass
-        return {
-            "verdict": "unverifiable",
-            "confidence": 50,
-            "explanation": response[:800],
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "verdict": {"type": "string"},
+                "confidence": {"type": "integer"},
+                "explanation": {"type": "string"},
+            },
+            "required": ["verdict", "confidence", "explanation"],
         }
+        parsed = None
+        if hasattr(self.model, "complete_json"):
+            parsed = self.model.complete_json(prompt, schema, "fact_check", "reasoning", 0.2)
+        if not isinstance(parsed, dict):
+            response = self.model.generate(prompt, "reasoning", 0.2)
+            try:
+                match = re.search(r"\{.*\}", response, re.DOTALL)
+                if match:
+                    parsed = json.loads(match.group())
+                    parsed.setdefault("explanation", response[:800])
+            except Exception:
+                parsed = {
+                    "verdict": "unverifiable",
+                    "confidence": 50,
+                    "explanation": response[:800],
+                }
+        if not isinstance(parsed, dict):
+            parsed = {"verdict": "unverifiable", "confidence": 50, "explanation": ""}
+        verdict = str(parsed.get("verdict", "unverifiable")).strip().lower()
+        if verdict not in {"supported", "contradicted", "mixed", "unverifiable"}:
+            verdict = "unverifiable"
+        parsed["verdict"] = verdict
+        return parsed
 
-    def deep_research(self, topic: str) -> Dict:
+    def deep_research(self, topic: str, context: str = "") -> Dict:
         queries = [
             f"{topic} overview",
             f"{topic} how it works",
@@ -92,6 +108,7 @@ class DeepResearchEngine:
         prompt = (
             f"Write an advanced research briefing on {topic} for a data science student.\n"
             f"Source notes:\n{compilation[:12000]}\n\n"
+            f"Extra context from the user:\n{(context or '')[:4000]}\n\n"
             "Use these sections: what it is, how it works, where it beats the alternatives, "
             "a concrete worked example, failure cases, and what to study next. "
             "Stay tied to the notes. Do not invent citations or numbers."

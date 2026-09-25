@@ -14,13 +14,13 @@ class CodeAssistant:
             "error handling, and a realistic usage example. Do not leave placeholders."
         )
         response = self.model.generate_code(prompt, language)
-        code = self._extract_code(response)
+        code = self._extract_code(response, language)
         
         # If no code found, try to generate a simpler version
         if not code or len(code) < 10:
             fallback_prompt = f"Write a simple {language} function for: {problem_description}. Only output the code, no explanation."
             response = self.model.generate(fallback_prompt, "code", 0.3)
-            code = self._extract_code(response)
+            code = self._extract_code(response, language)
         
         return {
             "full_response": response,
@@ -31,14 +31,24 @@ class CodeAssistant:
     def check_code(self, code: str, language: str = "python") -> str:
         return self.model.check_code_errors(code, language)
 
-    def _extract_code(self, response: str) -> str:
-        # Look for code blocks
+    def _extract_code(self, response: str, language: str = "python") -> str:
+        aliases = {
+            "python": {"python", "py", ""},
+            "sql": {"sql", ""},
+            "r": {"r", ""},
+        }
+        allowed = aliases.get(language, {language.lower(), ""})
         pattern = r'```(\w*)\n(.*?)```'
         matches = re.findall(pattern, response, re.DOTALL)
-        
+        fallback = ""
         for match in matches:
-            if match[0].lower() in ['python', 'py', '']:
-                return match[1].strip()
+            body = match[1].strip()
+            if not fallback:
+                fallback = body
+            if match[0].lower() in allowed:
+                return body
+        if fallback:
+            return fallback
         
         # If no code block, try to find python-like code
         lines = response.split('\n')

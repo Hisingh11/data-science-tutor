@@ -5,6 +5,7 @@ import uuid
 import streamlit as st
 
 from utils.assignment import AssignmentManager
+from utils.chat_history import clear_messages, load_messages, save_messages
 from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
 from utils.image_recognition import analyze_image
@@ -131,6 +132,13 @@ def interview_active():
     return bool(interview.current_topic) and interview.questions_asked < len(interview.questions or [])
 
 
+def leaves_interview(text):
+    return bool(re.match(
+        r"(?i)(interview|assignment|^grade\b|research|look up|fact-?check|write code|write a function|write python|generate code)",
+        text.strip(),
+    ))
+
+
 def format_interview_result(evaluation, nxt):
     strengths = evaluation.get("strengths") or []
     improvements = evaluation.get("improvements") or []
@@ -174,14 +182,14 @@ def run_interview(prompt):
     )
 
 
-def run_assignment(prompt):
+def run_assignment(prompt, user_content):
     manager = st.session_state.assignment_manager
     lowered = prompt.lower()
     if lowered.startswith("grade"):
         assignment = st.session_state.get("current_assignment") or {}
         assignment_id = assignment.get("assignment_id", "")
-        body = re.sub(r"(?i)^grade(?:\s+this)?\s*:?\s*", "", prompt).strip()
-        result = manager.grade_submission(assignment_id, body)
+        body = re.sub(r"(?i)^grade(?:\s+this)?\s*:?\s*", "", user_content).strip()
+        result = manager.grade_submission(assignment_id, body, assignment=assignment)
         if result.get("error"):
             return result["error"]
         strengths = "; ".join(result.get("strengths") or [])
@@ -244,30 +252,38 @@ def with_history(prompt):
     return f"Previous conversation:\n{transcript}\n\nCurrent request:\n{prompt}"
 
 
-def run_code(prompt):
-    prompt = with_history(prompt)
+def pick_language(text):
+    lowered = text.lower()
+    if re.search(r"\bsql\b", lowered):
+        return "sql"
+    if re.search(r"(?<![a-z])r(?![a-z])", lowered) and "python" not in lowered:
+        return "r"
+    return "python"
+
+
+def run_code(prompt, user_content):
     assistant = st.session_state.code_assistant
-    language = "sql" if " sql" in prompt.lower() else "r" if re.search(r"\br\b", prompt.lower()) else "python"
-    if "```" in prompt or re.search(r"(?i)review|debug|fix this code", prompt):
-        code = prompt
-        fenced = re.search(r"```(?:\w+)?\n(.*?)```", prompt, re.DOTALL)
+    language = pick_language(prompt)
+    reviewing = "```" in prompt or bool(re.search(r"(?i)review|debug|fix this code", prompt))
+    if reviewing:
+        code = user_content
+        fenced = re.search(r"```(?:\w+)?\n(.*?)```", user_content, re.DOTALL)
         if fenced:
             code = fenced.group(1)
         return assistant.check_code(code, language)
-    generated = assistant.generate_code(prompt, language)
+    generated = assistant.generate_code(with_history(user_content), language)
     return generated.get("full_response") or generated.get("code") or "I could not write that."
 
 
-def run_research(prompt):
-    prompt = with_history(prompt)
+def run_research(prompt, user_content):
     engine = st.session_state.research_engine
     lowered = prompt.lower()
     if "fact-check" in lowered or "fact check" in lowered:
-        claim = re.sub(r"(?i)fact-?check\s*:?\s*", "", prompt).strip()
-        result = engine.fact_check(claim or prompt)
+        claim = re.sub(r"(?i)^fact-?check\s*:?\s*", "", user_content).strip()
+        result = engine.fact_check(claim or user_content)
         return f"**Verdict:** {result.get('verdict', 'unverifiable')}\n\n{result.get('explanation', '')}"
     topic = re.sub(r"(?i)^(research|look up)\s*:?\s*", "", prompt).strip() or prompt
-    result = engine.deep_research(topic)
+    result = engine.deep_research(topic, with_history(user_content))
     sources = result.get("sources") or []
     source_lines = "\n".join(f"- [{item['title']}]({item['url']})" for item in sources)
     parts = [f"**{result['topic']}**", result.get("key_takeaways") or "", result.get("report") or ""]
@@ -276,21 +292,21 @@ def run_research(prompt):
     return "\n\n".join(part for part in parts if part)
 
 
-def route(prompt):
+def route(prompt, user_content):
     lowered = prompt.lower().strip()
     if lowered in {"stop interview", "end interview"}:
         st.session_state.interview_system.current_topic = None
         return "Interview ended. Ask anything else."
-    if interview_active() and not re.match(r"(?i)(interview|assignment|research|look up|fact-?check|write code|write a function)", lowered):
-        return run_interview(prompt)
+    if interview_active() and not leaves_interview(lowered):
+        return run_interview(user_content)
     if re.search(r"(?i)interview|quiz me|mock interview", lowered):
         return run_interview(prompt)
     if re.search(r"(?i)assignment|practice questions|^grade\b", lowered):
-        return run_assignment(prompt)
+        return run_assignment(prompt, user_content)
     if re.search(r"(?i)fact-?check|^research\b|^look up\b", lowered):
-        return run_research(prompt)
+        return run_research(prompt, user_content)
     if "```" in prompt or re.search(r"(?i)write code|write a function|write python|generate code|review this code|debug this", lowered):
-        return run_code(prompt)
+        return run_code(prompt, user_content)
     return None
 
 
@@ -316,7 +332,10 @@ def read_upload(uploaded):
         extra = f"\n\n[Attached file {uploaded.name}]:\n{clipped}"
     elif name.endswith(".pdf"):
         text = st.session_state.assignment_manager.extract_text_from_file(uploaded)
-        extra = f"\n\n[Attached PDF {uploaded.name}]:\n{text[:limit]}"
+        clipped = text[:limit]
+        if len(text) > limit:
+            clipped += "\n\n[File truncated for the model. The full file is saved.]"
+        extra = f"\n\n[Attached PDF {uploaded.name}]:\n{clipped}"
     return path, note, extra
 
 
@@ -347,6 +366,7 @@ def render_header():
     with action:
         if st.button("Clear", use_container_width=True):
             st.session_state.messages = []
+            clear_messages()
             st.session_state.interview_system.current_topic = None
             st.session_state.pop("download", None)
             st.session_state.pop("current_assignment", None)
@@ -381,7 +401,7 @@ def render_messages():
 
 ensure_core()
 if "messages" not in st.session_state:
-    st.session_state.messages = []
+    st.session_state.messages = load_messages()
 
 render_header()
 if st.session_state.model_manager.init_error:
@@ -424,12 +444,15 @@ if not prompt:
 
 user_content = prompt
 attachments = []
-image_note = ""
+image_notes = []
 for uploaded in uploads:
     with st.spinner("Reading the file..."):
         path, image_note, extra = read_upload(uploaded)
     attachments.append(path)
+    if image_note:
+        image_notes.append(image_note)
     user_content += extra
+image_note = "\n".join(image_notes)
 
 with st.chat_message("user"):
     st.markdown(prompt)
@@ -438,7 +461,7 @@ with st.chat_message("user"):
 with st.chat_message("assistant"):
     special = None
     with st.spinner(""):
-        special = route(user_content)
+        special = route(prompt, user_content)
     if special is None:
         reply = answer_chat(prompt, user_content, image_note)
     else:
@@ -457,4 +480,5 @@ st.session_state.messages.append({
     "model_content": reply,
     "attachments": [],
 })
+save_messages(st.session_state.messages)
 st.rerun()

@@ -269,19 +269,44 @@ class RAGEngine:
             "correct: the passage contains the facts needed to answer.\n"
             "ambiguous: same general topic, but it does not answer this question.\n"
             "incorrect: a different topic.\n"
-            "strip: if correct or ambiguous, the one or two sentences that help. Otherwise empty.\n"
-            'Return only a JSON list like [{"id": 1, "grade": "correct", "strip": "..."}].'
+            "strip: if correct or ambiguous, the one or two sentences that help. Otherwise empty."
         )
-        raw = model.complete(prompt, "fast", 0.0)
-        if not raw or raw.startswith("Error:"):
-            return []
-        match = re.search(r"\[.*\]", raw, re.DOTALL)
-        if not match:
-            return []
-        try:
-            parsed = json.loads(match.group())
-        except json.JSONDecodeError:
-            return []
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "grades": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "grade": {"type": "string"},
+                            "strip": {"type": "string"},
+                        },
+                        "required": ["id", "grade", "strip"],
+                    },
+                }
+            },
+            "required": ["grades"],
+        }
+        parsed = None
+        if hasattr(model, "complete_json"):
+            wrapped = model.complete_json(prompt, schema, "passage_grades", "fast", 0.0)
+            if isinstance(wrapped, dict):
+                parsed = wrapped.get("grades")
+        if not isinstance(parsed, list):
+            raw = model.complete(prompt + '\nReturn only a JSON list like [{"id": 1, "grade": "correct", "strip": "..."}].', "fast", 0.0)
+            if not raw or raw.startswith("Error:"):
+                return []
+            match = re.search(r"\[.*\]", raw, re.DOTALL)
+            if not match:
+                return []
+            try:
+                parsed = json.loads(match.group())
+            except json.JSONDecodeError:
+                return []
         graded = []
         for item in parsed:
             if not isinstance(item, dict):
@@ -308,10 +333,7 @@ class RAGEngine:
 
     def _web_search(self, query: str, max_results: int = 3) -> List[Dict]:
         try:
-            try:
-                from ddgs import DDGS
-            except ImportError:
-                from duckduckgo_search import DDGS
+            from ddgs import DDGS
             rows = DDGS().text(query, max_results=max_results) or []
         except Exception:
             return []
@@ -333,7 +355,7 @@ class RAGEngine:
 
     def _clean_query(self, query: str) -> str:
         text = query or ""
-        text = re.split(r"\[(Image analysis|Attached text|Attached PDF text)\]", text, maxsplit=1)[0]
+        text = re.split(r"\[(Image analysis|Attached file|Attached PDF)", text, maxsplit=1)[0]
         text = re.sub(r"\s+", " ", text).strip()
         return text[:500]
 
