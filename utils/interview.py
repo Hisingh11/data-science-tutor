@@ -172,35 +172,35 @@ class InterviewSystem:
         current = self.interview_history[self.questions_asked]
         current["user_answer"] = user_answer
         
-        eval_prompt = f"""
-You are evaluating a Data Science interview answer.
-
+        eval_prompt = f"""Evaluate this data science interview answer.
 Topic: {self.current_topic}
 Difficulty: {self.current_difficulty}
 Question: {current['question']}
-Candidate's Answer: {user_answer}
+Candidate's answer: {user_answer}
 
-Provide evaluation in JSON format:
-{{
-    "score": 7,
-    "strengths": ["List of strengths"],
-    "improvements": ["List of improvements"],
-    "model_answer": "A comprehensive model answer",
-    "feedback": "Constructive feedback paragraph"
-}}
-"""
-        
-        response = self.model.generate(eval_prompt, "reasoning", 0.3)
-        
-        try:
-            import re
-            json_match = re.search(r'\{.*\}', response, re.DOTALL)
-            if json_match:
-                evaluation = json.loads(json_match.group())
-            else:
-                evaluation = self._default_evaluation()
-        except:
+score is an integer from 0 to 10.
+strengths and improvements are short lists.
+model_answer is a strong sample answer.
+feedback is one constructive paragraph."""
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "score": {"type": "integer"},
+                "strengths": {"type": "array", "items": {"type": "string"}},
+                "improvements": {"type": "array", "items": {"type": "string"}},
+                "model_answer": {"type": "string"},
+                "feedback": {"type": "string"},
+            },
+            "required": ["score", "strengths", "improvements", "model_answer", "feedback"],
+        }
+        evaluation = self.model.complete_json(eval_prompt, schema, "interview_grade", "reasoning", 0.2)
+        if not evaluation:
             evaluation = self._default_evaluation()
+        try:
+            evaluation["score"] = max(0, min(10, int(evaluation.get("score", 5))))
+        except (TypeError, ValueError):
+            evaluation["score"] = 5
         
         current["ai_feedback"] = evaluation.get("feedback", "Good attempt")
         current["model_answer"] = evaluation.get("model_answer", current['question'])

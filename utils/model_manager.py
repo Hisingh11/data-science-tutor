@@ -1,4 +1,5 @@
-﻿import os
+﻿import json
+import os
 from dotenv import load_dotenv
 from groq import Groq
 
@@ -65,9 +66,7 @@ class ModelManager:
         text = str(content).strip()
         return text or "The model returned an empty response. Try again."
 
-    def answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.7):
-        if not self.client:
-            return self.init_error or "API key not configured"
+    def _chat_messages(self, prompt, history=None, context=""):
         messages = [{"role": "system", "content": TUTOR_SYSTEM}]
         if context:
             if context.startswith("Retrieval check:"):
@@ -81,16 +80,84 @@ class ModelManager:
             if role in ("user", "assistant") and content:
                 messages.append({"role": role, "content": content[:8000]})
         messages.append({"role": "user", "content": prompt})
+        return messages
+
+    def answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.7):
+        if not self.client:
+            return self.init_error or "API key not configured"
         try:
             response = self.client.chat.completions.create(
                 model=self.models.get(model_type, self.models["reasoning"]),
-                messages=messages,
+                messages=self._chat_messages(prompt, history, context),
                 temperature=temperature,
                 max_tokens=4096,
             )
             return self._message_text(response)
         except Exception as exc:
             return f"Error: {exc}"
+
+    def stream_answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.6):
+        if not self.client:
+            yield self.init_error or "API key not configured"
+            return
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.models.get(model_type, self.models["reasoning"]),
+                messages=self._chat_messages(prompt, history, context),
+                temperature=temperature,
+                max_tokens=4096,
+                stream=True,
+            )
+        except Exception as exc:
+            yield f"Error: {exc}"
+            return
+        saw_content = False
+        reasoning = []
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            text = getattr(delta, "content", None) or ""
+            if text:
+                saw_content = True
+                yield text
+            thought = getattr(delta, "reasoning", None) or ""
+            if thought:
+                reasoning.append(thought)
+        if not saw_content and reasoning:
+            yield "".join(reasoning)
+
+    def complete_json(self, prompt, schema, name="result", model_type="reasoning", temperature=0.2):
+        if not self.client:
+            return None
+        messages = [
+            {"role": "system", "content": "Return only JSON that matches the schema."},
+            {"role": "user", "content": prompt},
+        ]
+        model_name = self.models.get(model_type, self.models["reasoning"])
+        formats = [
+            {
+                "type": "json_schema",
+                "json_schema": {"name": name, "strict": True, "schema": schema},
+            },
+            {"type": "json_object"},
+        ]
+        for response_format in formats:
+            try:
+                response = self.client.chat.completions.create(
+                    model=model_name,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=2048,
+                    response_format=response_format,
+                )
+                raw = self._message_text(response)
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                continue
+        return None
 
     def complete(self, prompt, model_type="fast", temperature=0.0):
         if not self.client:

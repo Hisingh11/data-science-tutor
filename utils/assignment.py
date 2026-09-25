@@ -488,38 +488,40 @@ Questions:
 Student submission:
 {answer_text[:8000]}
 
-Return only JSON:
-{{
-  "earned_points": 0,
-  "overall_feedback": "paragraph",
-  "strengths": ["..."],
-  "weak_areas": ["..."]
-}}
-earned_points must be an integer from 0 to {total}."""
-        response = self.model.generate(prompt, "reasoning", 0.2)
-        try:
-            import re
-            match = re.search(r"\{.*\}", response, re.DOTALL)
-            parsed = json.loads(match.group()) if match else {}
-            earned = int(parsed.get("earned_points", 0))
-            earned = max(0, min(total, earned))
-            return {
-                "total_points": total,
-                "earned_points": earned,
-                "percentage": round((earned / total) * 100, 1) if total else 0,
-                "overall_feedback": parsed.get("overall_feedback") or response[:800],
-                "strengths": parsed.get("strengths") or [],
-                "weak_areas": parsed.get("weak_areas") or [],
-            }
-        except Exception:
+earned_points is an integer from 0 to {total}."""
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "earned_points": {"type": "integer"},
+                "overall_feedback": {"type": "string"},
+                "strengths": {"type": "array", "items": {"type": "string"}},
+                "weak_areas": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["earned_points", "overall_feedback", "strengths", "weak_areas"],
+        }
+        parsed = self.model.complete_json(prompt, schema, "assignment_grade", "reasoning", 0.2)
+        if not parsed:
             return {
                 "total_points": total,
                 "earned_points": None,
                 "percentage": None,
-                "overall_feedback": response[:1200],
+                "overall_feedback": "The grader did not return a score. Try again.",
                 "strengths": [],
                 "weak_areas": [],
             }
+        try:
+            earned = max(0, min(total, int(parsed.get("earned_points", 0))))
+        except (TypeError, ValueError):
+            earned = 0
+        return {
+            "total_points": total,
+            "earned_points": earned,
+            "percentage": round((earned / total) * 100, 1) if total else 0,
+            "overall_feedback": parsed.get("overall_feedback") or "",
+            "strengths": parsed.get("strengths") or [],
+            "weak_areas": parsed.get("weak_areas") or [],
+        }
     
     def extract_text_from_file(self, uploaded_file) -> str:
         name = (uploaded_file.name or "").lower()

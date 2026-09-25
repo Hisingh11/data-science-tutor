@@ -145,20 +145,25 @@ def render_chat():
             model=st.session_state.model_manager,
         )
     context = retrieval["context"]
-    with st.spinner("Thinking..."):
-        reply = st.session_state.model_manager.answer(
-            full_prompt,
-            history=history,
-            context=context,
-            model_type="reasoning",
-            temperature=0.6,
+    with st.chat_message("user"):
+        st.markdown(user_content)
+    with st.chat_message("assistant"):
+        reply = st.write_stream(
+            st.session_state.model_manager.stream_answer(
+                full_prompt,
+                history=history,
+                context=context,
+                model_type="reasoning",
+                temperature=0.6,
+            )
         )
     st.session_state.messages.append(
         {"role": "user", "content": user_content, "attachments": attachments}
     )
     st.session_state.messages.append({"role": "assistant", "content": reply, "attachments": []})
-    st.session_state.upload_key += 1
-    st.rerun()
+    if uploaded:
+        st.session_state.upload_key += 1
+        st.rerun()
 
 
 def render_interview():
