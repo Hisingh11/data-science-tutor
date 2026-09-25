@@ -459,13 +459,16 @@ with st.chat_message("user"):
     for uploaded in uploads:
         st.caption(uploaded.name)
 with st.chat_message("assistant"):
-    special = None
-    with st.spinner(""):
-        special = route(prompt, user_content)
-    if special is None:
-        reply = answer_chat(prompt, user_content, image_note)
-    else:
-        reply = special
+    try:
+        with st.spinner(""):
+            special = route(prompt, user_content)
+        if special is None:
+            reply = answer_chat(prompt, user_content, image_note)
+        else:
+            reply = special
+            st.markdown(reply)
+    except Exception as exc:
+        reply = f"That request failed: {exc}\n\nTry again, or rephrase it."
         st.markdown(reply)
 
 st.session_state.messages.append({
