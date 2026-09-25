@@ -1,6 +1,3 @@
-import subprocess
-import sys
-import tempfile
 import re
 from typing import Dict
 
@@ -9,7 +6,13 @@ class CodeAssistant:
         self.model = model_manager
     
     def generate_code(self, problem_description: str, language: str = "python") -> Dict:
-        prompt = f"Generate {language} code for: {problem_description}\n\nProvide clean, working code with comments and example usage."
+        prompt = (
+            f"Write advanced, production-style {language} for this request.\n\n"
+            f"{problem_description}\n\n"
+            "If source text or a file excerpt is included, treat it as the spec.\n"
+            "Include a short plan, then complete code with types or clear names, "
+            "error handling, and a realistic usage example. Do not leave placeholders."
+        )
         response = self.model.generate_code(prompt, language)
         code = self._extract_code(response)
         
@@ -25,40 +28,9 @@ class CodeAssistant:
             "language": language
         }
     
-    def check_code(self, code: str, language: str = "python") -> Dict:
+    def check_code(self, code: str, language: str = "python") -> str:
         return self.model.check_code_errors(code, language)
-    
-    def execute_python_code(self, code: str, timeout_seconds: int = 10) -> Dict:
-        result = {"success": False, "output": "", "error": "", "return_code": None}
-        import os
-        
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-            f.write(code)
-            temp_file = f.name
-        
-        try:
-            process = subprocess.run(
-                [sys.executable, temp_file],
-                capture_output=True,
-                text=True,
-                timeout=timeout_seconds
-            )
-            result["output"] = process.stdout
-            result["error"] = process.stderr
-            result["return_code"] = process.returncode
-            result["success"] = process.returncode == 0
-        except subprocess.TimeoutExpired:
-            result["error"] = f"Timeout after {timeout_seconds} seconds"
-        except Exception as e:
-            result["error"] = str(e)
-        finally:
-            try:
-                os.unlink(temp_file)
-            except:
-                pass
-        
-        return result
-    
+
     def _extract_code(self, response: str) -> str:
         # Look for code blocks
         pattern = r'```(\w*)\n(.*?)```'
@@ -88,17 +60,3 @@ class CodeAssistant:
             return response
         
         return ""
-    
-    def resolve_code_error(self, code: str, error_message: str) -> str:
-        prompt = f"Fix this code error:\n\nCODE:\n```python\n{code}\n```\n\nERROR:\n{error_message}\n\nProvide the fixed code."
-        return self.model.generate(prompt, "code", 0.3)
-    
-    def analyze_image_code(self, extracted_text: str) -> Dict:
-        prompt = f"Solve this coding problem:\n{extracted_text}\n\nProvide the solution with code."
-        response = self.model.generate(prompt, "code", 0.4)
-        code = self._extract_code(response)
-        return {
-            "analysis": response,
-            "code": code,
-            "language": "python"
-        }

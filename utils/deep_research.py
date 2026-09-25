@@ -78,20 +78,23 @@ class DeepResearchEngine:
     def deep_research(self, topic: str) -> Dict:
         queries = [
             f"{topic} overview",
-            f"{topic} best practices",
-            f"{topic} common mistakes",
+            f"{topic} how it works",
+            f"{topic} compared with alternatives",
+            f"{topic} limitations and failure cases",
+            f"{topic} practical workflow",
         ]
-        all_results = {query: self.search_web(query, max_results=3) for query in queries}
+        all_results = {query: self.search_web(query, max_results=4) for query in queries}
         compilation = ""
         for query, results in all_results.items():
             compilation += f"\n\n=== {query} ===\n"
             for result in results:
                 compilation += f"\n**{result['title']}**\n{result['body'][:400]}\n"
         prompt = (
-            f"Write a study briefing on {topic} for a data science student.\n"
-            f"Source notes:\n{compilation}\n\n"
-            "Include a short summary, key concepts, a practical example, "
-            "common mistakes, and what to study next. Do not invent sources."
+            f"Write an advanced research briefing on {topic} for a data science student.\n"
+            f"Source notes:\n{compilation[:12000]}\n\n"
+            "Use these sections: what it is, how it works, where it beats the alternatives, "
+            "a concrete worked example, failure cases, and what to study next. "
+            "Stay tied to the notes. Do not invent citations or numbers."
         )
         report = self.model.generate(prompt, "reasoning", 0.4)
         takeaways = self.model.generate(

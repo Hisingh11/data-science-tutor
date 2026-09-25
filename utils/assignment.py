@@ -3,16 +3,15 @@ import json
 import hashlib
 from datetime import datetime
 from typing import Dict, Optional, List
-import streamlit as st
 
 # Try to import reportlab for PDF generation
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import A4, letter
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.lib.enums import TA_CENTER
     import io
     REPORTLAB_AVAILABLE = True
 except ImportError:
@@ -26,23 +25,6 @@ class AssignmentManager:
         
         os.makedirs(upload_dir, exist_ok=True)
         os.makedirs(assignments_dir, exist_ok=True)
-        
-        self.student_progress = self._load_progress()
-    
-    def _load_progress(self):
-        progress_file = os.path.join(self.assignments_dir, "student_progress.json")
-        if os.path.exists(progress_file):
-            try:
-                with open(progress_file, 'r') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-    
-    def _save_progress(self):
-        progress_file = os.path.join(self.assignments_dir, "student_progress.json")
-        with open(progress_file, 'w') as f:
-            json.dump(self.student_progress, f, indent=2)
     
     def generate_assignment(self, topic: str, difficulty: str, num_questions: int = 20, student_id: str = "default"):
         """Generate a comprehensive assignment with PDF"""

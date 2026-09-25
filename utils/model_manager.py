@@ -9,7 +9,8 @@ TUTOR_SYSTEM = (
     "You are Data Scientist BOT, a tutor for data science, machine learning, "
     "statistics, Python, generative AI, and agentic AI. Teach clearly with "
     "examples and correct code when it helps. If you are unsure, say so. "
-    "Do not invent citations or library APIs."
+    "Do not invent citations or library APIs. "
+    "Use the earlier messages in this conversation. Do not ask the user to repeat what they already said."
 )
 
 
@@ -74,7 +75,7 @@ class ModelManager:
             else:
                 note = "Relevant notes from the knowledge base:\n" + context
             messages.append({"role": "system", "content": note})
-        for msg in (history or [])[-8:]:
+        for msg in (history or [])[-16:]:
             role = msg.get("role")
             content = (msg.get("content") or "").strip()
             if role in ("user", "assistant") and content:
@@ -178,9 +179,6 @@ class ModelManager:
 
     def generate(self, prompt, model_type="reasoning", temperature=0.7):
         return self.answer(prompt, model_type=model_type, temperature=temperature)
-
-    def generate_with_context(self, prompt, context, model_type="reasoning", temperature=0.7):
-        return self.answer(prompt, context=context, model_type=model_type, temperature=temperature)
 
     def generate_code(self, prompt, language="python"):
         if not self.client:

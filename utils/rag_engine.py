@@ -2,7 +2,7 @@ import json
 import math
 import os
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 STOPWORDS = {
     "a", "an", "the", "and", "or", "of", "to", "in", "on", "for", "with", "from",

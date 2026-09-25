@@ -1,7 +1,5 @@
-import json
 import random
 from typing import List, Dict
-from datetime import datetime
 
 class InterviewSystem:
     def __init__(self, model_manager):
