@@ -107,8 +107,8 @@ class DeepResearchEngine:
                 compilation += f"\n**{result['title']}**\n{result['body'][:400]}\n"
         prompt = (
             f"Write an advanced research briefing on {topic} for a data science student.\n"
-            f"Source notes:\n{compilation[:12000]}\n\n"
-            f"Extra context from the user:\n{(context or '')[:4000]}\n\n"
+            f"Source notes:\n{compilation[:8000]}\n\n"
+            f"Extra context from the user:\n{(context or '')[:2000]}\n\n"
             "Use these sections: what it is, how it works, where it beats the alternatives, "
             "a concrete worked example, failure cases, and what to study next. "
             "Stay tied to the notes. Do not invent citations or numbers."

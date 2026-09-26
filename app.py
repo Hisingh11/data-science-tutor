@@ -10,7 +10,7 @@ from utils.code_assistant import CodeAssistant
 from utils.deep_research import DeepResearchEngine
 from utils.image_recognition import analyze_image
 from utils.interview import InterviewSystem
-from utils.model_manager import get_model_manager
+from utils.model_manager import get_model_manager, trim_history
 from utils.rag_engine import RAGEngine
 
 INTERVIEW_TOPICS = {
@@ -245,10 +245,10 @@ def conversation_history():
 
 
 def with_history(prompt):
-    prior = conversation_history()[-12:]
+    prior = trim_history(conversation_history(), total_chars=4000, message_chars=1000)
     if not prior:
         return prompt
-    transcript = "\n\n".join(f"{msg['role']}: {msg['content'][:2500]}" for msg in prior)
+    transcript = "\n\n".join(f"{msg['role']}: {msg['content']}" for msg in prior)
     return f"Previous conversation:\n{transcript}\n\nCurrent request:\n{prompt}"
 
 
@@ -310,7 +310,12 @@ def route(prompt, user_content):
     return None
 
 
-def read_upload(uploaded):
+# Total attachment text sent to the model per message. Groq's free tier
+# allows about 8,000 tokens per request, so files are shared out of this.
+ATTACHMENT_CHARS = 10000
+
+
+def read_upload(uploaded, limit=ATTACHMENT_CHARS):
     folder = "./data/uploads"
     os.makedirs(folder, exist_ok=True)
     safe_name = f"{uuid.uuid4().hex[:8]}_{os.path.basename(uploaded.name)}"
@@ -319,7 +324,6 @@ def read_upload(uploaded):
         handle.write(uploaded.getbuffer())
     note = ""
     extra = ""
-    limit = 24000
     name = safe_name.lower()
     if (uploaded.type or "").startswith("image/"):
         note = analyze_image(path, "Describe this image. Extract any code, diagram, or text you can see.")
@@ -445,9 +449,10 @@ if not prompt:
 user_content = prompt
 attachments = []
 image_notes = []
+per_file_limit = max(1500, ATTACHMENT_CHARS // max(1, len(uploads)))
 for uploaded in uploads:
     with st.spinner("Reading the file..."):
-        path, image_note, extra = read_upload(uploaded)
+        path, image_note, extra = read_upload(uploaded, per_file_limit)
     attachments.append(path)
     if image_note:
         image_notes.append(image_note)
