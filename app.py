@@ -71,6 +71,7 @@ st.markdown(
         color: #241f33 !important;
         border: 1px solid #d9d0ee !important;
         border-radius: 14px !important;
+        padding-right: 5.4rem !important;
     }
     .stChatInput textarea:focus {
         border-color: #5b4d8a !important;
@@ -87,6 +88,33 @@ st.markdown(
         background: #5b4d8a;
         border-color: #5b4d8a;
         color: #ffffff;
+    }
+    .st-key-composer_edit {
+        position: fixed !important;
+        z-index: 1000002;
+        bottom: 1.15rem;
+        left: calc(min(100vw - 1rem, 50% + 370px) - 6.5rem);
+        width: 2.3rem !important;
+        height: 2.3rem !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .st-key-composer_edit button {
+        width: 2.2rem;
+        height: 2.2rem;
+        min-height: 2.2rem !important;
+        padding: 0 !important;
+        border: none !important;
+        border-radius: 8px !important;
+        background: transparent !important;
+        color: #5b4d8a !important;
+        font-size: 1.05rem;
+    }
+    .st-key-composer_edit button:hover {
+        background: #efeaf8 !important;
+        border: none !important;
+        color: #3d3470 !important;
     }
     button[aria-label="Upload files"] svg { display: none; }
     button[aria-label="Upload files"]::after {
@@ -516,48 +544,69 @@ def apply_edit(message, draft):
     message["model_content"] = draft + extra
 
 
+def latest_reply_index():
+    messages = st.session_state.messages
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].get("role") == "assistant":
+            return index
+    return None
+
+
 def render_messages():
-    editing = st.session_state.get("edit_index")
-    busy = bool(st.session_state.get("pending"))
-    for index, msg in enumerate(st.session_state.messages):
+    for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
-            if editing == index and not busy:
-                draft = st.text_area(
-                    "Edit this message",
-                    value=msg.get("content") or "",
-                    key=f"draft_{index}",
-                    height=160,
-                )
-                save, again, cancel = st.columns(3)
-                with save:
-                    if st.button("Save", key=f"save_{index}", use_container_width=True):
-                        text = draft.strip()
-                        if text:
-                            apply_edit(msg, text)
-                            save_messages(st.session_state.messages)
-                        st.session_state.edit_index = None
-                        st.rerun()
-                with again:
-                    if msg["role"] == "user" and st.button("Send again", key=f"again_{index}", use_container_width=True):
-                        text = draft.strip()
-                        if text:
-                            st.session_state.messages = st.session_state.messages[:index]
-                            save_messages(st.session_state.messages)
-                            st.session_state.edit_index = None
-                            st.session_state.queued = text
-                            st.rerun()
-                with cancel:
-                    if st.button("Cancel", key=f"cancel_{index}", use_container_width=True):
-                        st.session_state.edit_index = None
-                        st.rerun()
-            else:
-                st.markdown(msg["content"])
-                for attachment in msg.get("attachments") or []:
-                    if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
-                        st.image(attachment, width=280)
-                if not busy and st.button("Edit", key=f"edit_{index}"):
-                    st.session_state.edit_index = index
+            st.markdown(msg["content"])
+            for attachment in msg.get("attachments") or []:
+                if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
+                    st.image(attachment, width=280)
+
+
+def render_composer():
+    """Edit control sits in the message bar, not under each reply."""
+    busy = bool(st.session_state.get("pending"))
+    messages = st.session_state.messages
+    index = st.session_state.get("edit_index")
+    if (
+        not busy
+        and isinstance(index, int)
+        and 0 <= index < len(messages)
+    ):
+        msg = messages[index]
+        draft = st.text_area(
+            "Edit the latest reply",
+            value=msg.get("content") or "",
+            key=f"draft_{index}",
+            height=140,
+        )
+        save, again, cancel = st.columns(3)
+        with save:
+            if st.button("Save", key=f"save_{index}", use_container_width=True):
+                text = draft.strip()
+                if text:
+                    apply_edit(msg, text)
+                    save_messages(messages)
+                st.session_state.edit_index = None
+                st.rerun()
+        with again:
+            if msg.get("role") == "user" and st.button("Send again", key=f"again_{index}", use_container_width=True):
+                text = draft.strip()
+                if text:
+                    st.session_state.messages = messages[:index]
+                    save_messages(st.session_state.messages)
+                    st.session_state.edit_index = None
+                    st.session_state.queued = text
                     st.rerun()
+        with cancel:
+            if st.button("Cancel", key=f"cancel_{index}", use_container_width=True):
+                st.session_state.edit_index = None
+                st.rerun()
+        return
+    target = None if busy else latest_reply_index()
+    if target is None:
+        return
+    if st.button("✎", key="composer_edit", help="Edit the latest reply"):
+        st.session_state.edit_index = target
+        st.rerun()
 
 
 ensure_core()
@@ -584,6 +633,7 @@ if download:
 
 st.caption("Use the paperclip in the message box. Attachments up to 50 MB.")
 
+render_composer()
 submission = st.chat_input(
     "Message Data Scientist BOT",
     accept_file="multiple",
