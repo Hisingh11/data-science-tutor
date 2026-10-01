@@ -89,13 +89,19 @@ st.markdown(
         border-color: #5b4d8a;
         color: #ffffff;
     }
+    /* The pencil is a sibling of the chat input in the bottom bar.
+       Anchor it to that bar so it sits inside the box at any width. */
+    [data-testid="stBottomBlockContainer"] [data-testid="stVerticalBlock"] {
+        position: relative;
+    }
     .st-key-composer_edit {
-        position: fixed !important;
-        z-index: 1000002;
-        bottom: 1.15rem;
-        left: calc(min(100vw - 1rem, 50% + 370px) - 6.5rem);
-        width: 2.3rem !important;
-        height: 2.3rem !important;
+        position: absolute !important;
+        z-index: 5;
+        right: 3.2rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 2.2rem !important;
+        height: 2.2rem !important;
         min-height: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
@@ -409,52 +415,18 @@ def open_reply(special, cancel, prompt, user_content, image_note):
     return special(cancel)
 
 
-def _consume(generator, pending):
-    try:
-        for piece in generator:
-            if pending["cancel"].is_set():
-                break
-            if not piece:
-                continue
-            text = piece if isinstance(piece, str) else str(piece)
-            with pending["lock"]:
-                pending["parts"].append(text)
-    except Exception as exc:
-        pending["error"] = str(exc)
-    finally:
-        with pending["lock"]:
-            pending["done"] = True
+def track(generator, inflight):
+    """Record each piece in session state so a stopped run keeps what was written."""
+    for piece in generator:
+        if not piece:
+            continue
+        text = piece if isinstance(piece, str) else str(piece)
+        inflight["parts"].append(text)
+        yield text
 
 
-def begin_reply(user_record, special, prompt, user_content, image_note):
-    cancel = threading.Event()
-    generator = open_reply(special, cancel, prompt, user_content, image_note)
-    pending = {
-        "cancel": cancel,
-        "lock": threading.Lock(),
-        "parts": [],
-        "done": False,
-        "error": "",
-        "committed": False,
-        "skip": False,
-        "user": user_record,
-    }
-    st.session_state.pending = pending
-    threading.Thread(target=_consume, args=(generator, pending), daemon=True).start()
-
-
-def finish_pending(pending, text, cancelled, error):
-    if pending.get("skip") or pending.get("committed"):
-        return
-    pending["committed"] = True
-    reply = (text or "").strip()
-    if error and not reply:
-        reply = f"That request failed: {error}\n\nTry again, or rephrase it."
-    elif cancelled:
-        reply = (reply + "\n\n*(Stopped.)*").strip() or "*(Stopped.)*"
-    if not reply:
-        reply = "I could not write that."
-    st.session_state.messages.append(pending["user"])
+def commit_reply(user_record, reply):
+    st.session_state.messages.append(user_record)
     st.session_state.messages.append({
         "role": "assistant",
         "content": reply,
@@ -462,40 +434,16 @@ def finish_pending(pending, text, cancelled, error):
         "attachments": [],
     })
     save_messages(st.session_state.messages)
-    st.session_state.pending = None
 
 
-@st.fragment(run_every=0.4)
-def draw_live():
-    pending = st.session_state.get("pending")
-    if not pending:
+def recover_stopped():
+    """A run that was stopped never reaches its commit; keep its partial reply."""
+    inflight = st.session_state.pop("inflight", None)
+    if not inflight:
         return
-    with pending["lock"]:
-        text = "".join(pending["parts"])
-        done = pending["done"]
-        error = pending["error"]
-    cancelled = pending["cancel"].is_set()
-    user = pending["user"]
-    with st.chat_message("user"):
-        st.markdown(user["content"])
-        for attachment in user.get("attachments") or []:
-            if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
-                st.image(attachment, width=280)
-    with st.chat_message("assistant"):
-        st.markdown((text or "…") + ("" if done else " ▍"))
-        if not done and not cancelled:
-            if st.button("Stop", key="stop_generation"):
-                pending["cancel"].set()
-        elif not done:
-            st.caption("Stopping…")
-    if done and not pending.get("committed") and not pending.get("skip"):
-        finish_pending(pending, text, cancelled, error)
-        st.rerun()
-
-
-def render_live():
-    if st.session_state.get("pending"):
-        draw_live()
+    text = "".join(inflight["parts"]).strip()
+    reply = f"{text}\n\n*(Stopped.)*" if text else "*(Stopped.)*"
+    commit_reply(inflight["user"], reply)
 
 
 def render_header():
@@ -505,11 +453,6 @@ def render_header():
         st.caption("Ask, practice, or research. Files up to 50 MB. Made by Himanshu.")
     with action:
         if st.button("Clear", use_container_width=True):
-            pending = st.session_state.get("pending")
-            if pending:
-                pending["cancel"].set()
-                pending["skip"] = True
-            st.session_state.pending = None
             st.session_state.edit_index = None
             st.session_state.messages = []
             clear_messages()
@@ -561,16 +504,10 @@ def render_messages():
                     st.image(attachment, width=280)
 
 
-def render_composer():
-    """Edit control sits in the message bar, not under each reply."""
-    busy = bool(st.session_state.get("pending"))
+def render_editor():
     messages = st.session_state.messages
     index = st.session_state.get("edit_index")
-    if (
-        not busy
-        and isinstance(index, int)
-        and 0 <= index < len(messages)
-    ):
+    if isinstance(index, int) and 0 <= index < len(messages):
         msg = messages[index]
         draft = st.text_area(
             "Edit the latest reply",
@@ -600,18 +537,28 @@ def render_composer():
             if st.button("Cancel", key=f"cancel_{index}", use_container_width=True):
                 st.session_state.edit_index = None
                 st.rerun()
+
+
+def render_pencil():
+    """Pencil inside the message bar, beside the send button."""
+    if st.session_state.get("edit_index") is not None:
         return
-    target = None if busy else latest_reply_index()
+    target = latest_reply_index()
     if target is None:
         return
-    if st.button("✎", key="composer_edit", help="Edit the latest reply"):
-        st.session_state.edit_index = target
-        st.rerun()
+    bottom = getattr(st, "_bottom", None)
+    if bottom is None:
+        return
+    with bottom:
+        if st.button("✎", key="composer_edit", help="Edit the latest reply"):
+            st.session_state.edit_index = target
+            st.rerun()
 
 
 ensure_core()
 if "messages" not in st.session_state:
     st.session_state.messages = load_messages()
+recover_stopped()
 
 render_header()
 if st.session_state.model_manager.init_error:
@@ -633,12 +580,15 @@ if download:
 
 st.caption("Use the paperclip in the message box. Attachments up to 50 MB.")
 
-render_composer()
+render_editor()
+
+# "stop" turns the send arrow into a stop button while a reply is running.
 submission = st.chat_input(
     "Message Data Scientist BOT",
     accept_file="multiple",
     max_upload_size=50,
     file_type=["png", "jpg", "jpeg", "gif", "webp", "pdf", "txt", "py", "md", "csv", "json", "sql", "r"],
+    submit_mode="stop",
 )
 uploads = []
 if queued:
@@ -649,47 +599,51 @@ elif submission is not None:
 else:
     prompt = ""
 if not prompt and not uploads:
-    render_live()
+    render_pencil()
     st.stop()
 if not prompt:
     prompt = "Look at the attached file and explain what it contains."
 
-pending = st.session_state.get("pending")
-if pending:
-    pending["cancel"].set()
-    pending["skip"] = True
-    st.session_state.pending = None
+st.session_state.edit_index = None
+user_record = {
+    "role": "user",
+    "content": prompt,
+    "model_content": prompt,
+    "attachments": [],
+}
+inflight = {"user": user_record, "parts": []}
+st.session_state.inflight = inflight
+
+with st.chat_message("user"):
+    st.markdown(prompt)
+    for uploaded in uploads:
+        st.caption(uploaded.name)
 
 user_content = prompt
-attachments = []
 image_notes = []
 per_file_limit = max(1500, ATTACHMENT_CHARS // max(1, len(uploads)))
 for uploaded in uploads:
     with st.spinner("Reading the file..."):
         path, image_note, extra = read_upload(uploaded, per_file_limit)
-    attachments.append(path)
+    user_record["attachments"].append(path)
     if image_note:
         image_notes.append(image_note)
     user_content += extra
+user_record["model_content"] = user_content
 image_note = "\n".join(image_notes)
 
-user_record = {
-    "role": "user",
-    "content": prompt,
-    "model_content": user_content,
-    "attachments": attachments,
-}
-try:
-    with st.spinner(""):
-        special = route(prompt, user_content)
-    begin_reply(user_record, special, prompt, user_content, image_note)
-except Exception as exc:
-    st.session_state.messages.append(user_record)
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": f"That request failed: {exc}\n\nTry again, or rephrase it.",
-        "model_content": f"That request failed: {exc}",
-        "attachments": [],
-    })
-    save_messages(st.session_state.messages)
+with st.chat_message("assistant"):
+    try:
+        with st.spinner(""):
+            special = route(prompt, user_content)
+        generator = open_reply(special, threading.Event(), prompt, user_content, image_note)
+        streamed = st.write_stream(track(generator, inflight))
+        reply = (streamed if isinstance(streamed, str) else "".join(inflight["parts"])).strip()
+        reply = reply or "I could not write that."
+    except Exception as exc:
+        reply = f"That request failed: {exc}\n\nTry again, or rephrase it."
+        st.markdown(reply)
+
+st.session_state.pop("inflight", None)
+commit_reply(user_record, reply)
 st.rerun()
