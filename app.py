@@ -1,5 +1,7 @@
+import inspect
 import os
 import re
+import threading
 import uuid
 
 import streamlit as st
@@ -270,9 +272,8 @@ def run_code(prompt, user_content):
         fenced = re.search(r"```(?:\w+)?\n(.*?)```", user_content, re.DOTALL)
         if fenced:
             code = fenced.group(1)
-        return assistant.check_code(code, language)
-    generated = assistant.generate_code(with_history(user_content), language)
-    return generated.get("full_response") or generated.get("code") or "I could not write that."
+        return assistant.iter_check_code(code, language)
+    return assistant.iter_generate_code(with_history(user_content), language)
 
 
 def run_research(prompt, user_content):
@@ -283,13 +284,15 @@ def run_research(prompt, user_content):
         result = engine.fact_check(claim or user_content)
         return f"**Verdict:** {result.get('verdict', 'unverifiable')}\n\n{result.get('explanation', '')}"
     topic = re.sub(r"(?i)^(research|look up)\s*:?\s*", "", prompt).strip() or prompt
-    result = engine.deep_research(topic, with_history(user_content))
-    sources = result.get("sources") or []
-    source_lines = "\n".join(f"- [{item['title']}]({item['url']})" for item in sources)
-    parts = [f"**{result['topic']}**", result.get("key_takeaways") or "", result.get("report") or ""]
-    if source_lines:
-        parts.append("**Sources**\n" + source_lines)
-    return "\n\n".join(part for part in parts if part)
+    context = with_history(user_content)
+
+    def start(cancel):
+        prepared = engine._prepare_research(topic, context, cancel)
+        if cancel.is_set():
+            return
+        yield from engine.iter_prepared(prepared)
+
+    return start
 
 
 def route(prompt, user_content):
@@ -343,23 +346,128 @@ def read_upload(uploaded, limit=ATTACHMENT_CHARS):
     return path, note, extra
 
 
-def answer_chat(prompt, user_content, image_note):
+def make_chat_stream(prompt, user_content, image_note):
     history = conversation_history()
+    rag = st.session_state.rag_engine
+    model = st.session_state.model_manager
     retrieval_query = prompt
     if image_note and len(prompt.split()) < 6:
         retrieval_query = f"{prompt}\n{image_note[:400]}"
-    retrieval = st.session_state.rag_engine.corrective_retrieve(
-        retrieval_query,
-        model=st.session_state.model_manager,
-    )
-    return st.write_stream(
-        st.session_state.model_manager.stream_answer(
+
+    def start(cancel):
+        retrieval = rag.corrective_retrieve(retrieval_query, model=model)
+        if cancel.is_set():
+            return
+        context = retrieval["context"] if isinstance(retrieval, dict) else ""
+        yield from model.stream_answer(
             user_content,
             history=history,
-            context=retrieval["context"],
+            context=context,
             temperature=0.6,
         )
-    )
+
+    return start
+
+
+def open_reply(special, cancel, prompt, user_content, image_note):
+    if special is None:
+        return make_chat_stream(prompt, user_content, image_note)(cancel)
+    if isinstance(special, str):
+        def once():
+            yield special
+        return once()
+    if inspect.isgenerator(special):
+        return special
+    return special(cancel)
+
+
+def _consume(generator, pending):
+    try:
+        for piece in generator:
+            if pending["cancel"].is_set():
+                break
+            if not piece:
+                continue
+            text = piece if isinstance(piece, str) else str(piece)
+            with pending["lock"]:
+                pending["parts"].append(text)
+    except Exception as exc:
+        pending["error"] = str(exc)
+    finally:
+        with pending["lock"]:
+            pending["done"] = True
+
+
+def begin_reply(user_record, special, prompt, user_content, image_note):
+    cancel = threading.Event()
+    generator = open_reply(special, cancel, prompt, user_content, image_note)
+    pending = {
+        "cancel": cancel,
+        "lock": threading.Lock(),
+        "parts": [],
+        "done": False,
+        "error": "",
+        "committed": False,
+        "skip": False,
+        "user": user_record,
+    }
+    st.session_state.pending = pending
+    threading.Thread(target=_consume, args=(generator, pending), daemon=True).start()
+
+
+def finish_pending(pending, text, cancelled, error):
+    if pending.get("skip") or pending.get("committed"):
+        return
+    pending["committed"] = True
+    reply = (text or "").strip()
+    if error and not reply:
+        reply = f"That request failed: {error}\n\nTry again, or rephrase it."
+    elif cancelled:
+        reply = (reply + "\n\n*(Stopped.)*").strip() or "*(Stopped.)*"
+    if not reply:
+        reply = "I could not write that."
+    st.session_state.messages.append(pending["user"])
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": reply,
+        "model_content": reply,
+        "attachments": [],
+    })
+    save_messages(st.session_state.messages)
+    st.session_state.pending = None
+
+
+@st.fragment(run_every=0.4)
+def draw_live():
+    pending = st.session_state.get("pending")
+    if not pending:
+        return
+    with pending["lock"]:
+        text = "".join(pending["parts"])
+        done = pending["done"]
+        error = pending["error"]
+    cancelled = pending["cancel"].is_set()
+    user = pending["user"]
+    with st.chat_message("user"):
+        st.markdown(user["content"])
+        for attachment in user.get("attachments") or []:
+            if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
+                st.image(attachment, width=280)
+    with st.chat_message("assistant"):
+        st.markdown((text or "…") + ("" if done else " ▍"))
+        if not done and not cancelled:
+            if st.button("Stop", key="stop_generation"):
+                pending["cancel"].set()
+        elif not done:
+            st.caption("Stopping…")
+    if done and not pending.get("committed") and not pending.get("skip"):
+        finish_pending(pending, text, cancelled, error)
+        st.rerun()
+
+
+def render_live():
+    if st.session_state.get("pending"):
+        draw_live()
 
 
 def render_header():
@@ -369,6 +477,12 @@ def render_header():
         st.caption("Ask, practice, or research. Files up to 50 MB. Made by Himanshu.")
     with action:
         if st.button("Clear", use_container_width=True):
+            pending = st.session_state.get("pending")
+            if pending:
+                pending["cancel"].set()
+                pending["skip"] = True
+            st.session_state.pending = None
+            st.session_state.edit_index = None
             st.session_state.messages = []
             clear_messages()
             st.session_state.interview_system.current_topic = None
@@ -394,13 +508,56 @@ def render_empty():
                 st.rerun()
 
 
+def apply_edit(message, draft):
+    old = message.get("content") or ""
+    model = message.get("model_content") or old
+    extra = model[len(old):] if model.startswith(old) else ""
+    message["content"] = draft
+    message["model_content"] = draft + extra
+
+
 def render_messages():
-    for msg in st.session_state.messages:
+    editing = st.session_state.get("edit_index")
+    busy = bool(st.session_state.get("pending"))
+    for index, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            for attachment in msg.get("attachments") or []:
-                if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
-                    st.image(attachment, width=280)
+            if editing == index and not busy:
+                draft = st.text_area(
+                    "Edit this message",
+                    value=msg.get("content") or "",
+                    key=f"draft_{index}",
+                    height=160,
+                )
+                save, again, cancel = st.columns(3)
+                with save:
+                    if st.button("Save", key=f"save_{index}", use_container_width=True):
+                        text = draft.strip()
+                        if text:
+                            apply_edit(msg, text)
+                            save_messages(st.session_state.messages)
+                        st.session_state.edit_index = None
+                        st.rerun()
+                with again:
+                    if msg["role"] == "user" and st.button("Send again", key=f"again_{index}", use_container_width=True):
+                        text = draft.strip()
+                        if text:
+                            st.session_state.messages = st.session_state.messages[:index]
+                            save_messages(st.session_state.messages)
+                            st.session_state.edit_index = None
+                            st.session_state.queued = text
+                            st.rerun()
+                with cancel:
+                    if st.button("Cancel", key=f"cancel_{index}", use_container_width=True):
+                        st.session_state.edit_index = None
+                        st.rerun()
+            else:
+                st.markdown(msg["content"])
+                for attachment in msg.get("attachments") or []:
+                    if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
+                        st.image(attachment, width=280)
+                if not busy and st.button("Edit", key=f"edit_{index}"):
+                    st.session_state.edit_index = index
+                    st.rerun()
 
 
 ensure_core()
@@ -442,9 +599,16 @@ elif submission is not None:
 else:
     prompt = ""
 if not prompt and not uploads:
+    render_live()
     st.stop()
 if not prompt:
     prompt = "Look at the attached file and explain what it contains."
+
+pending = st.session_state.get("pending")
+if pending:
+    pending["cancel"].set()
+    pending["skip"] = True
+    st.session_state.pending = None
 
 user_content = prompt
 attachments = []
@@ -459,34 +623,23 @@ for uploaded in uploads:
     user_content += extra
 image_note = "\n".join(image_notes)
 
-with st.chat_message("user"):
-    st.markdown(prompt)
-    for uploaded in uploads:
-        st.caption(uploaded.name)
-with st.chat_message("assistant"):
-    try:
-        with st.spinner(""):
-            special = route(prompt, user_content)
-        if special is None:
-            reply = answer_chat(prompt, user_content, image_note)
-        else:
-            reply = special
-            st.markdown(reply)
-    except Exception as exc:
-        reply = f"That request failed: {exc}\n\nTry again, or rephrase it."
-        st.markdown(reply)
-
-st.session_state.messages.append({
+user_record = {
     "role": "user",
     "content": prompt,
     "model_content": user_content,
     "attachments": attachments,
-})
-st.session_state.messages.append({
-    "role": "assistant",
-    "content": reply,
-    "model_content": reply,
-    "attachments": [],
-})
-save_messages(st.session_state.messages)
+}
+try:
+    with st.spinner(""):
+        special = route(prompt, user_content)
+    begin_reply(user_record, special, prompt, user_content, image_note)
+except Exception as exc:
+    st.session_state.messages.append(user_record)
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": f"That request failed: {exc}\n\nTry again, or rephrase it.",
+        "model_content": f"That request failed: {exc}",
+        "attachments": [],
+    })
+    save_messages(st.session_state.messages)
 st.rerun()

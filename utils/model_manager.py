@@ -160,22 +160,7 @@ class ModelManager:
         except Exception as exc:
             return self._error_text(exc)
 
-    def stream_answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.6):
-        if not self.client:
-            yield self.init_error or "API key not configured"
-            return
-        try:
-            messages, max_tokens = self._fit(self._chat_messages(prompt, history, context))
-            stream = self.client.chat.completions.create(
-                model=self.models.get(model_type, self.models["reasoning"]),
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-            )
-        except Exception as exc:
-            yield self._error_text(exc)
-            return
+    def _iter_stream(self, stream):
         saw_content = False
         reasoning = []
         for chunk in stream:
@@ -189,8 +174,53 @@ class ModelManager:
             thought = getattr(delta, "reasoning", None) or ""
             if thought:
                 reasoning.append(thought)
-        if not saw_content and reasoning:
-            yield "".join(reasoning)
+        if saw_content or not reasoning:
+            return
+        # Some models put the whole answer in reasoning and send it late.
+        # Yield it in pieces so the chat still fills in, instead of popping in at once.
+        blob = "".join(reasoning)
+        step = 48
+        for start in range(0, len(blob), step):
+            yield blob[start:start + step]
+
+    def stream_chat(self, messages, model_type="reasoning", temperature=0.6):
+        if not self.client:
+            yield self.init_error or "API key not configured"
+            return
+        try:
+            fitted, max_tokens = self._fit(messages)
+            stream = self.client.chat.completions.create(
+                model=self.models.get(model_type, self.models["reasoning"]),
+                messages=fitted,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=True,
+            )
+        except Exception as exc:
+            yield self._error_text(exc)
+            return
+        yield from self._iter_stream(stream)
+
+    def stream_answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.6):
+        yield from self.stream_chat(
+            self._chat_messages(prompt, history, context),
+            model_type=model_type,
+            temperature=temperature,
+        )
+
+    def stream_code(self, prompt, language="python"):
+        system_prompt = (
+            f"You are an expert {language} programmer helping a data science student. "
+            "Generate clean, working code with short comments and a usage example."
+        )
+        yield from self.stream_chat(
+            [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt},
+            ],
+            model_type="code",
+            temperature=0.3,
+        )
 
     def complete_json(self, prompt, schema, name="result", model_type="reasoning", temperature=0.2):
         if not self.client:

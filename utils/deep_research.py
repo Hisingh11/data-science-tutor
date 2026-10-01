@@ -91,7 +91,7 @@ class DeepResearchEngine:
         parsed["verdict"] = verdict
         return parsed
 
-    def deep_research(self, topic: str, context: str = "") -> Dict:
+    def _prepare_research(self, topic: str, context: str = "", cancel=None) -> Dict:
         queries = [
             f"{topic} overview",
             f"{topic} how it works",
@@ -99,7 +99,11 @@ class DeepResearchEngine:
             f"{topic} limitations and failure cases",
             f"{topic} practical workflow",
         ]
-        all_results = {query: self.search_web(query, max_results=4) for query in queries}
+        all_results = {}
+        for query in queries:
+            if cancel is not None and cancel.is_set():
+                break
+            all_results[query] = self.search_web(query, max_results=4)
         compilation = ""
         for query, results in all_results.items():
             compilation += f"\n\n=== {query} ===\n"
@@ -113,19 +117,38 @@ class DeepResearchEngine:
             "a concrete worked example, failure cases, and what to study next. "
             "Stay tied to the notes. Do not invent citations or numbers."
         )
-        report = self.model.generate(prompt, "reasoning", 0.4)
-        takeaways = self.model.generate(
-            f"Give 5 short study takeaways about {topic}. Use a numbered list.",
-            "fast",
-            0.3,
-        )
         return {
             "topic": topic,
-            "report": report,
-            "key_takeaways": takeaways,
+            "prompt": prompt,
+            "takeaways_prompt": f"Give 5 short study takeaways about {topic}. Use a numbered list.",
             "sources": self._extract_sources(all_results),
             "searches_performed": list(all_results.keys()),
         }
+
+    def deep_research(self, topic: str, context: str = "") -> Dict:
+        prepared = self._prepare_research(topic, context)
+        report = self.model.generate(prepared["prompt"], "reasoning", 0.4)
+        takeaways = self.model.generate(prepared["takeaways_prompt"], "fast", 0.3)
+        return {
+            "topic": prepared["topic"],
+            "report": report,
+            "key_takeaways": takeaways,
+            "sources": prepared["sources"],
+            "searches_performed": prepared["searches_performed"],
+        }
+
+    def iter_prepared(self, prepared: Dict):
+        """Yield a briefing that was already searched. Tokens arrive as the model writes them."""
+        yield f"**{prepared['topic']}**\n\n"
+        yield from self.model.stream_answer(
+            prepared["takeaways_prompt"], model_type="fast", temperature=0.3
+        )
+        yield "\n\n"
+        yield from self.model.stream_answer(prepared["prompt"], temperature=0.4)
+        sources = prepared["sources"]
+        if sources:
+            lines = "\n".join(f"- [{item['title']}]({item['url']})" for item in sources)
+            yield "\n\n**Sources**\n" + lines
 
     def _extract_sources(self, all_results: Dict) -> List[Dict]:
         sources = []

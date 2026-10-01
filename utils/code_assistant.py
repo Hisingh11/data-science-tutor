@@ -31,6 +31,37 @@ class CodeAssistant:
     def check_code(self, code: str, language: str = "python") -> str:
         return self.model.check_code_errors(code, language)
 
+    def iter_check_code(self, code: str, language: str = "python"):
+        prompt = (
+            f"Review this {language} code for a data science student.\n"
+            f"```{language}\n{code}\n```\n"
+            "List bugs, then show a corrected version."
+        )
+        yield from self.model.stream_answer(prompt, model_type="code", temperature=0.3)
+
+    def iter_generate_code(self, problem_description: str, language: str = "python"):
+        prompt = (
+            f"Write advanced, production-style {language} for this request.\n\n"
+            f"{problem_description}\n\n"
+            "If source text or a file excerpt is included, treat it as the spec.\n"
+            "Include a short plan, then complete code with types or clear names, "
+            "error handling, and a realistic usage example. Do not leave placeholders."
+        )
+        parts = []
+        for piece in self.model.stream_code(prompt, language):
+            parts.append(piece)
+            yield piece
+        text = "".join(parts)
+        extracted = self._extract_code(text, language)
+        if extracted and len(extracted) >= 10:
+            return
+        fallback = (
+            f"Write a simple {language} function for: {problem_description}. "
+            "Only output the code, no explanation."
+        )
+        yield "\n\n"
+        yield from self.model.stream_answer(fallback, model_type="code", temperature=0.3)
+
     def _extract_code(self, response: str, language: str = "python") -> str:
         aliases = {
             "python": {"python", "py", ""},
