@@ -12,8 +12,8 @@ Made by **Himanshu**.
 
 | Mode | How to start | What happens |
 | --- | --- | --- |
-| Tutor chat | Ask a normal question | Retrieval-augmented answer streamed from Groq |
-| Mock interview | `Interview me on machine learning, beginner` | Five scored questions plus a model answer |
+| Tutor chat | Ask a normal question | Local BM25 + DuckDuckGo retrieval, source grading, sampled answer, and self-checks |
+| Mock interview | `Interview me on machine learning, beginner` | Five generated questions, scored answers, and a model answer; questions avoid recent repeats |
 | Assignment | `Assignment on Python, intermediate, 8 questions` | Question set in chat and a PDF download |
 | Grading | `grade this:` plus your answers | Scores the last generated assignment |
 | Code | `Write a Python function that fills missing values` | Plan + code, or a review if you paste a fenced block |
@@ -74,7 +74,7 @@ There is **no** `auth.py` or SQLAlchemy database. Users are not stored.
 ---
 
 ## Architecture
-The Streamlit process holds one `ModelManager` and one instance of each tool in `st.session_state`. Every user message goes through a **router**. Special intents skip RAG. Tutor chat uses a LangGraph Self-RAG workflow: retrieve and grade notes, answer with probabilistic sampling, reflect on grounding and usefulness, then self-correct with no more than five retries.
+The Streamlit process holds one `ModelManager` and one instance of each tool in `st.session_state`. Every user message goes through a **router**. Special intents skip tutor-chat retrieval. Normal questions use a LangGraph Self-RAG workflow that searches the local corpus and DuckDuckGo, grades both sets of results, samples an answer, evaluates grounding and usefulness, and self-corrects up to five times.
 
 ```mermaid
 %%{init: {
@@ -162,13 +162,13 @@ flowchart TB
 Page chrome, CSS, `ensure_core()`, intent routing, file ingest, chat history in session, streaming display, assignment download button.
 
 **`utils/model_manager.py`**  
-Loads `GROQ_API_KEY` from `.env` or `st.secrets`. Maps roles `fast`, `reasoning`, `code`, and `vision` to Groq model ids. Builds the tutor system prompt and fits history and context to the API token budget. Tutor answers use probabilistic sampling; structured self-checks use JSON output.
+Loads `GROQ_API_KEY` from `.env` or `st.secrets`. Maps `fast`, `reasoning`, and `code` to Groq model ids, assembles chat history and retrieved context, and provides completion, structured-JSON, and streaming methods. Tutor answers use nonzero-temperature sampling.
 
 **`utils/rag_engine.py`**  
-A small built-in corpus (lifecycle, overfitting, metrics, RAG, agents, and similar) indexed with BM25 keyword retrieval. `search` returns ranked passages, while `web_notes` searches DuckDuckGo alongside local retrieval.
+A small built-in corpus (lifecycle, overfitting, metrics, RAG, agents, and similar) indexed with BM25 keyword retrieval. `search` returns ranked local passages; `web_notes` searches DuckDuckGo for external candidates.
 
 **`utils/self_rag_graph.py`**
-A LangGraph workflow that searches the local BM25 corpus and DuckDuckGo, probabilistically ranks web snippets for relevance, generates a sampled answer, and evaluates grounding against the selected local and web sources. It allows at most five self-correction retries.
+A LangGraph workflow that searches the local BM25 corpus and DuckDuckGo on each tutor turn, grades results, retains the highest-scoring relevant web snippets, generates a sampled answer, and evaluates grounding against selected local and web sources. It allows at most five self-correction retries.
 
 **`utils/interview.py`**  
 Generates five topic- and difficulty-specific questions with nonzero sampling, avoids recently asked questions during the session, and uses a shuffled question bank if generation is unavailable. Each answer is scored 0–10 with strengths, gaps, and a model answer.
@@ -205,7 +205,7 @@ flowchart TD
   C --> D{"Image / PDF / text?"}
   D -->|image| E["Vision model describes it"]
   D -->|pdf| F["Extract text"]
-  D -->|txt py md csv json sql r| G["Read text, cap 24k chars"]
+  D -->|txt py md csv json sql r| G["Read text, cap excerpts per file"]
   E --> H["Build user_content"]
   F --> H
   G --> H
@@ -249,7 +249,7 @@ flowchart TD
 4. `assignment`, `practice questions`, or a line starting with `grade`.
 5. `fact-check`, or a line starting with `research` / `look up`.
 6. A markdown code fence, or phrases like `write code`, `write a function`, `generate code`, `review this code`, `debug this`.
-7. Otherwise tutor chat with RAG + streaming.
+7. Otherwise tutor chat with LangGraph Self-RAG. The final answer is displayed in chunks after the graph completes.
 
 Interview topics are inferred from the prompt (`data science`, `machine learning` / `ml`, `generative` / `gen ai`, `agent`, `python`). Difficulty defaults to **intermediate** unless the text contains beginner or advanced.
 
@@ -272,17 +272,15 @@ sequenceDiagram
   A->>L: invoke(query, history)
   L->>R: search(query)
   R-->>L: Ranked passages
-  L->>M: Grade passage relevance (fast model)
-  M->>G: Structured JSON request
-  G-->>L: Passage grades
-  alt No relevant local passages
-    L->>W: Search query
-    W-->>L: Web snippets
-  end
-  L->>M: Generate sampled answer (temperature 0.7)
+  L->>W: Search query (DuckDuckGo)
+  W-->>L: Web snippets
+  L->>M: Grade local and web relevance (temperature 0.35)
+  M->>G: Structured JSON requests
+  G-->>L: Passage grades and web scores
+  L->>M: Generate sampled answer (temperature 0.85)
   M->>G: Tutor answer request
   G-->>L: Draft
-  L->>M: Reflect on grounding and usefulness
+  L->>M: Reflect on grounding and usefulness (temperature 0.35)
   M->>G: Structured JSON request
   G-->>L: Critique
   loop Critique requests revision, up to 5 retries
@@ -297,7 +295,7 @@ sequenceDiagram
   A-->>U: Display answer
 ```
 
-History sent to the model is trimmed to fit the model's token budget. Attachments are merged into `model_content` so the model sees file text even if the visible bubble only shows your short prompt.
+History sent to the model is trimmed by character limits. Text from attachments is appended to the current request; PDFs and text-like files are not added to the persistent RAG corpus.
 
 ---
 
@@ -307,9 +305,10 @@ History sent to the model is trimmed to fit the model's token budget. Attachment
 %%{init: {"theme": "base"}}%%
 flowchart LR
   subgraph Interview["Interview"]
-    I1["Pick topic + difficulty"] --> I2["5 bank questions"]
-    I2 --> I3["Score / 10 + model answer"]
-    I3 --> I4["Summary when done"]
+    I1["Pick topic + difficulty"] --> I2["Generate 5 varied questions"]
+    I2 --> I3["Avoid recent questions"]
+    I3 --> I4["Score / 10 + model answer"]
+    I4 --> I5["Summary or stop early"]
   end
 
   subgraph Assignment["Assignment"]
@@ -320,8 +319,8 @@ flowchart LR
 
   subgraph Code["Code"]
     C1{"Fenced code or review?"}
-    C1 -->|yes| C2["check_code"]
-    C1 -->|no| C3["generate_code"]
+    C1 -->|yes| C2["iter_check_code"]
+    C1 -->|no| C3["iter_generate_code"]
   end
 
   subgraph Research["Research"]
@@ -345,7 +344,8 @@ Language for code is **Python** unless the prompt clearly asks for SQL or R.
 
 ## Session and files
 
-- **Chat memory** is only `st.session_state`. Refresh or **Clear** wipes it. Nothing is written to SQLite.
+- **Chat history** is saved locally to `data/chat_history.json` and loaded on refresh. **Clear** deletes it. Nothing is written to SQLite.
+- **Active interview state** and recent-question tracking live in `st.session_state`; they reset when the Streamlit session ends. The transcript remains in chat history.
 - **Assignments** persist as JSON/PDF under `assignments/` so grading can reload by id.
 - **Uploads** are copied to `data/uploads/` with a short UUID prefix.
 - Images are shown in the thread at 280px width when the path still exists.
@@ -356,10 +356,12 @@ Language for code is **Python** unless the prompt clearly asks for SQL or R.
 
 | Role | Model id | Used for |
 | --- | --- | --- |
-| `reasoning` | `openai/gpt-oss-120b` | Default tutor stream, interviews, assignments, research |
-| `fast` | `openai/gpt-oss-20b` | Query expansion in RAG |
-| `code` | `openai/gpt-oss-120b` | Code generate / review |
-| `vision` | `qwen/qwen3.8-27b` | Image attachments |
+| `reasoning` | `openai/gpt-oss-120b` | Tutor answers, interview questions/evaluation, assignment grading, research |
+| `fast` | `openai/gpt-oss-20b` | Local/web retrieval grading and Self-RAG reflection |
+| `code` | `openai/gpt-oss-120b` | Code generation and review |
+| Vision | `qwen/qwen3.8-27b` | Image attachments via `image_recognition.py` |
+
+Self-RAG uses temperature `0.85` for tutor answers and `0.35` for retrieval grading/reflection. Interview questions use `0.9`; interview evaluation uses `0.55`.
 
 You need a key from [console.groq.com](https://console.groq.com). Older Llama ids in comments (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`) were retired for developer accounts and are not used.
 
@@ -400,8 +402,8 @@ Open the local URL Streamlit prints (usually `http://localhost:8501`).
 - `streamlit` — UI
 - `groq` — LLM + vision
 - `python-dotenv` — local secrets
-- `Pillow` — image handling
 - `ddgs` — web research
+- `langgraph` — Self-RAG workflow
 - `reportlab` — assignment PDFs
 - `pypdf` — PDF text extract
 
@@ -420,7 +422,7 @@ Open the local URL Streamlit prints (usually `http://localhost:8501`).
 GROQ_API_KEY = "your_key_from_https://console.groq.com"
 ```
 
-Cloud instances are ephemeral: `assignments/` and `data/uploads/` do not survive a reboot. Chat never did, because it is session-only.
+Cloud instances are ephemeral: `assignments/`, `data/uploads/`, and `data/chat_history.json` may not survive a reboot.
 
 ---
 
