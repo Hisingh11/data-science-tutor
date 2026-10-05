@@ -38,7 +38,8 @@ Suggested starters on an empty chat:
 | LLM API | Groq |
 | Chat / reasoning / code | `openai/gpt-oss-120b` (reasoning, code) and `openai/gpt-oss-20b` (fast) |
 | Vision | `qwen/qwen3.8-27b` |
-| Knowledge | In-memory keyword retrieval in `utils/rag_engine.py` (no vector database) |
+| Knowledge | BM25 retrieval plus LangGraph Self-RAG in `utils/rag_engine.py` and `utils/self_rag_graph.py` |
+| Orchestration | LangGraph state graph with up to 5 self-correction retries |
 | Web search | `ddgs` (DuckDuckGo) |
 | PDFs | ReportLab to write, pypdf to read |
 | Secrets | `.env` locally, Streamlit secrets in the cloud |
@@ -56,7 +57,8 @@ Data_science_tutor/
 ├── .env                   # GROQ_API_KEY (not committed)
 ├── utils/
 │   ├── model_manager.py   # Groq client, model map, generate + stream
-│   ├── rag_engine.py      # Built-in notes + corrective retrieve
+│   ├── rag_engine.py      # Built-in notes + BM25 search
+│   ├── self_rag_graph.py  # LangGraph Self-RAG with bounded retries
 │   ├── interview.py       # Question banks, scoring, summary
 │   ├── assignment.py      # Question banks, PDF, grade from JSON
 │   ├── code_assistant.py  # Generate / review code (does not run it)
@@ -72,8 +74,7 @@ There is **no** `auth.py` or SQLAlchemy database. Users are not stored.
 ---
 
 ## Architecture
-
-The Streamlit process holds one `ModelManager` and one instance of each tool in `st.session_state`. Every user message goes through a **router**. Special intents skip RAG. Everything else is tutor chat: retrieve notes, then stream a completion.
+The Streamlit process holds one `ModelManager` and one instance of each tool in `st.session_state`. Every user message goes through a **router**. Special intents skip RAG. Tutor chat uses a LangGraph Self-RAG workflow: retrieve and grade notes, answer with probabilistic sampling, reflect on grounding and usefulness, then self-correct with no more than five retries.
 
 ```mermaid
 %%{init: {
@@ -106,6 +107,7 @@ flowchart TB
   subgraph Tools["utils/"]
     MM["ModelManager"]
     RAG["RAGEngine"]
+    SELF["LangGraph Self-RAG"]
     INT["InterviewSystem"]
     ASM["AssignmentManager"]
     CA["CodeAssistant"]
@@ -124,8 +126,10 @@ flowchart TB
   R -->|write / review code| CD
   R -->|research or fact-check| RS
 
-  CHAT --> RAG --> MM
-  CHAT --> MM
+  CHAT --> SELF
+  SELF --> RAG
+  SELF --> MM
+  RAG --> WEB
   IV --> INT --> MM
   AS --> ASM --> MM
   AS --> DISK
@@ -147,7 +151,7 @@ flowchart TB
   class UI ui
   class R route
   class CHAT,IV,AS,CD,RS mode
-  class MM,RAG,INT,ASM,CA,DR,VIS util
+  class MM,RAG,SELF,INT,ASM,CA,DR,VIS util
   class G,WEB ext
   class DISK disk
 ```
@@ -158,13 +162,16 @@ flowchart TB
 Page chrome, CSS, `ensure_core()`, intent routing, file ingest, chat history in session, streaming display, assignment download button.
 
 **`utils/model_manager.py`**  
-Loads `GROQ_API_KEY` from `.env` or `st.secrets`. Maps roles `fast`, `reasoning`, `code`, and `vision` to Groq model ids. Builds the tutor system prompt, optional RAG context, and the last ~16 history turns. `stream_answer` is used for tutor chat; interviews, assignments, code, and research use non-streaming `generate` helpers.
+Loads `GROQ_API_KEY` from `.env` or `st.secrets`. Maps roles `fast`, `reasoning`, `code`, and `vision` to Groq model ids. Builds the tutor system prompt and fits history and context to the API token budget. Tutor answers use probabilistic sampling; structured self-checks use JSON output.
 
 **`utils/rag_engine.py`**  
-A small built-in corpus (lifecycle, overfitting, metrics, RAG, agents, and similar). Retrieval is **TF-IDF-style keyword overlap**, not embeddings. `corrective_retrieve` can expand the query with the fast model if the first pass looks weak. Greetings skip retrieval.
+A small built-in corpus (lifecycle, overfitting, metrics, RAG, agents, and similar) indexed with BM25 keyword retrieval. `search` returns ranked passages, while `web_notes` searches DuckDuckGo alongside local retrieval.
+
+**`utils/self_rag_graph.py`**
+A LangGraph workflow that searches the local BM25 corpus and DuckDuckGo, probabilistically ranks web snippets for relevance, generates a sampled answer, and evaluates grounding against the selected local and web sources. It allows at most five self-correction retries.
 
 **`utils/interview.py`**  
-Topic banks at beginner / intermediate / advanced. Five questions per run. Each answer is scored 0–10 with strengths, gaps, and a model answer. `get_summary` finishes the round.
+Generates five topic- and difficulty-specific questions with nonzero sampling, avoids recently asked questions during the session, and uses a shuffled question bank if generation is unavailable. Each answer is scored 0–10 with strengths, gaps, and a model answer.
 
 **`utils/assignment.py`**  
 Builds a question list, writes `assignments/<id>.json` and a PDF, grades a submission against that JSON (or the in-session assignment). PDF extract uses pypdf when you attach a PDF.
@@ -210,7 +217,7 @@ flowchart TD
   I -->|assignment / grade| M["Generate PDF or grade"]
   I -->|research / fact-check| N["Search web + write report"]
   I -->|write / review code| O["Generate or review, no exec"]
-  I -->|else| P["corrective_retrieve + stream_answer"]
+  I -->|else| P["LangGraph Self-RAG"]
   J --> Q["Show reply, store two chat messages"]
   K --> Q
   L --> Q
@@ -236,7 +243,7 @@ flowchart TD
 
 ### Router rules (order matters)
 
-1. `stop interview` / `end interview` — leave interview mode.
+1. `stop interview` / `end interview`, or the **Stop interview** button — leave interview mode.
 2. An interview already running, and the text is **not** a new special intent — treat the message as an answer.
 3. Words like `interview`, `quiz me`, `mock interview`.
 4. `assignment`, `practice questions`, or a line starting with `grade`.
@@ -256,25 +263,41 @@ sequenceDiagram
   participant U as You
   participant A as app.py
   participant R as RAGEngine
+  participant L as Self-RAG graph
   participant M as ModelManager
   participant G as Groq
+  participant W as DuckDuckGo
 
   U->>A: Question (+ optional file text)
-  A->>R: corrective_retrieve(query)
-  R->>R: Token overlap vs built-in notes
-  alt Weak match and not a greeting
-    R->>M: Expand query (fast model)
-    M->>G: openai/gpt-oss-20b
-    G-->>M: Extra terms
-    R->>R: Retrieve again
+  A->>L: invoke(query, history)
+  L->>R: search(query)
+  R-->>L: Ranked passages
+  L->>M: Grade passage relevance (fast model)
+  M->>G: Structured JSON request
+  G-->>L: Passage grades
+  alt No relevant local passages
+    L->>W: Search query
+    W-->>L: Web snippets
   end
-  R-->>A: Context snippets
-  A->>M: stream_answer(prompt, history, context)
-  M->>G: openai/gpt-oss-120b
-  G-->>U: Streamed tokens in the chat bubble
+  L->>M: Generate sampled answer (temperature 0.7)
+  M->>G: Tutor answer request
+  G-->>L: Draft
+  L->>M: Reflect on grounding and usefulness
+  M->>G: Structured JSON request
+  G-->>L: Critique
+  loop Critique requests revision, up to 5 retries
+    L->>M: Regenerate with critique feedback
+    M->>G: Tutor answer request
+    G-->>L: Revised answer
+    L->>M: Reflect on revised answer
+    M->>G: Structured JSON request
+    G-->>L: Updated critique
+  end
+  L-->>A: Final answer and reflection log
+  A-->>U: Display answer
 ```
 
-History sent to the model is the last **12** user/assistant turns from `st.session_state.messages` (the manager itself will take up to 16). Attachments are merged into `model_content` so the model sees file text even if the visible bubble only shows your short prompt.
+History sent to the model is trimmed to fit the model's token budget. Attachments are merged into `model_content` so the model sees file text even if the visible bubble only shows your short prompt.
 
 ---
 

@@ -14,6 +14,7 @@ from utils.image_recognition import analyze_image
 from utils.interview import InterviewSystem
 from utils.model_manager import get_model_manager, trim_history
 from utils.rag_engine import RAGEngine
+from utils.self_rag_graph import SelfRAGEngine
 
 INTERVIEW_TOPICS = {
     "data science": "Data Science Fundamentals",
@@ -140,6 +141,7 @@ def ensure_core():
     st.session_state.model_manager = get_model_manager()
     st.session_state.rag_engine = RAGEngine()
     st.session_state.rag_engine.load_initial_knowledge()
+    st.session_state.self_rag = SelfRAGEngine(st.session_state.rag_engine, st.session_state.model_manager)
     st.session_state.interview_system = InterviewSystem(st.session_state.model_manager)
     st.session_state.assignment_manager = AssignmentManager(st.session_state.model_manager)
     st.session_state.code_assistant = CodeAssistant(st.session_state.model_manager)
@@ -194,7 +196,7 @@ def format_interview_result(evaluation, nxt):
         total = len(st.session_state.interview_system.questions)
         lines += ["", f"**Question {asked} of {total}**", nxt]
     else:
-        summary, _avg, _pct = st.session_state.interview_system.get_summary()
+        summary, _, _ = st.session_state.interview_system.get_summary()
         lines += ["", summary]
         st.session_state.interview_system.current_topic = None
     return "\n".join(lines)
@@ -213,7 +215,7 @@ def run_interview(prompt):
     total = len(interview.questions)
     return (
         f"**{topic}** · {difficulty}\n\n"
-        f"Five questions, scored out of 10. Say **stop interview** to end it.\n\n"
+        f"Five questions, scored out of 10. Click **Stop interview** or send `stop interview` to end early.\n\n"
         f"**Question 1 of {total}**\n\n{question}"
     )
 
@@ -249,7 +251,7 @@ def run_assignment(prompt, user_content):
     count_match = re.search(r"(\d+)\s+questions", lowered)
     count = int(count_match.group(1)) if count_match else 6
     count = max(6, min(15, count))
-    assignment, pdf_bytes = manager.generate_assignment(topic, difficulty, count, student_id="student")
+    assignment, pdf_bytes = manager.generate_assignment(topic, difficulty, count)
     st.session_state.current_assignment = assignment
     st.session_state.download = {
         "name": f"{assignment['assignment_id']}.pdf" if pdf_bytes.startswith(b"%PDF") else f"{assignment['assignment_id']}.txt",
@@ -382,23 +384,14 @@ def read_upload(uploaded, limit=ATTACHMENT_CHARS):
 
 def make_chat_stream(prompt, user_content, image_note):
     history = conversation_history()
-    rag = st.session_state.rag_engine
-    model = st.session_state.model_manager
+    self_rag = st.session_state.self_rag
     retrieval_query = prompt
     if image_note and len(prompt.split()) < 6:
         retrieval_query = f"{prompt}\n{image_note[:400]}"
 
     def start(cancel):
-        retrieval = rag.corrective_retrieve(retrieval_query, model=model)
-        if cancel.is_set():
-            return
-        context = retrieval["context"] if isinstance(retrieval, dict) else ""
-        yield from model.stream_answer(
-            user_content,
-            history=history,
-            context=context,
-            temperature=0.6,
-        )
+        # The graph may self-correct up to five times before returning.
+        yield from self_rag.iter_answer(retrieval_query, user_content, history, cancel)
 
     return start
 
@@ -425,14 +418,17 @@ def track(generator, inflight):
         yield text
 
 
-def commit_reply(user_record, reply):
-    st.session_state.messages.append(user_record)
-    st.session_state.messages.append({
+def commit_reply(user_record, reply, self_rag_log=None):
+    message = {
         "role": "assistant",
         "content": reply,
         "model_content": reply,
         "attachments": [],
-    })
+    }
+    if self_rag_log:
+        message["self_rag_log"] = self_rag_log
+    st.session_state.messages.append(user_record)
+    st.session_state.messages.append(message)
     save_messages(st.session_state.messages)
 
 
@@ -444,6 +440,28 @@ def recover_stopped():
     text = "".join(inflight["parts"]).strip()
     reply = f"{text}\n\n*(Stopped.)*" if text else "*(Stopped.)*"
     commit_reply(inflight["user"], reply)
+
+
+def stop_interview():
+    interview = st.session_state.interview_system
+    if not interview_active():
+        return
+
+    answered = interview.questions_asked
+    total = len(interview.questions)
+    progress = f"Progress: {answered} of {total} questions answered."
+    if answered:
+        progress += f" Average score: {interview.score / answered:.1f}/10."
+    reply = f"Interview stopped. {progress}"
+    interview.current_topic = None
+    interview.current_difficulty = None
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": reply,
+        "model_content": reply,
+        "attachments": [],
+    })
+    save_messages(st.session_state.messages)
 
 
 def render_header():
@@ -495,10 +513,30 @@ def latest_reply_index():
     return None
 
 
+def render_self_rag_log(log):
+    revised = "revised after self-check" if log.get("revised") else "kept as drafted"
+    lines = [
+        f"Self-correction retries: {log.get('retries_used', 0)} of {log.get('max_retries', 5)}",
+        f"LLM checks used: {log.get('llm_checks', 0)}",
+    ]
+    if log.get("retrieved"):
+        topics = ", ".join(item.get("topic", "note") for item in log["retrieved"][:5])
+        lines.append(f"Notes used: {topics}")
+    if log.get("web"):
+        lines.append(f"Web notes used: {log['web']}")
+    lines.append(f"Grounding: {log.get('support', 'not checked')}")
+    lines.append(f"Usefulness: {log.get('usefulness', 'not checked')}")
+    with st.expander(f"🧠 Self-RAG · {revised}"):
+        st.markdown("\n".join(f"- {line}" for line in lines))
+
+
 def render_messages():
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            log = msg.get("self_rag_log")
+            if isinstance(log, dict):
+                render_self_rag_log(log)
             for attachment in msg.get("attachments") or []:
                 if str(attachment).lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".webp")) and os.path.exists(attachment):
                     st.image(attachment, width=280)
@@ -555,6 +593,22 @@ def render_pencil():
             st.rerun()
 
 
+def render_stop_interview_button():
+    active_interview = interview_active()
+    if not active_interview:
+        return
+    _, action = st.columns([4, 2])
+    with action:
+        if st.button(
+            "Stop interview",
+            key="stop_interview",
+            help="End the active interview and save your progress.",
+            use_container_width=True,
+        ):
+            stop_interview()
+            st.rerun()
+
+
 ensure_core()
 if "messages" not in st.session_state:
     st.session_state.messages = load_messages()
@@ -581,6 +635,7 @@ if download:
 st.caption("Use the paperclip in the message box. Attachments up to 50 MB.")
 
 render_editor()
+render_stop_interview_button()
 
 # "stop" turns the send arrow into a stop button while a reply is running.
 submission = st.chat_input(
@@ -645,5 +700,7 @@ with st.chat_message("assistant"):
         st.markdown(reply)
 
 st.session_state.pop("inflight", None)
-commit_reply(user_record, reply)
+self_rag_log = st.session_state.self_rag.last_log
+st.session_state.self_rag.last_log = None
+commit_reply(user_record, reply, self_rag_log)
 st.rerun()

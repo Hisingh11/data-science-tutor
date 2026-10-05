@@ -1,9 +1,6 @@
 import json
 import re
-import warnings
 from typing import Dict, List
-
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class DeepResearchEngine:
@@ -122,19 +119,6 @@ class DeepResearchEngine:
             "prompt": prompt,
             "takeaways_prompt": f"Give 5 short study takeaways about {topic}. Use a numbered list.",
             "sources": self._extract_sources(all_results),
-            "searches_performed": list(all_results.keys()),
-        }
-
-    def deep_research(self, topic: str, context: str = "") -> Dict:
-        prepared = self._prepare_research(topic, context)
-        report = self.model.generate(prepared["prompt"], "reasoning", 0.4)
-        takeaways = self.model.generate(prepared["takeaways_prompt"], "fast", 0.3)
-        return {
-            "topic": prepared["topic"],
-            "report": report,
-            "key_takeaways": takeaways,
-            "sources": prepared["sources"],
-            "searches_performed": prepared["searches_performed"],
         }
 
     def iter_prepared(self, prepared: Dict):

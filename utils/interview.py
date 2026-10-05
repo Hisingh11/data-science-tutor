@@ -1,5 +1,12 @@
 import random
-from typing import List, Dict
+import re
+from typing import List
+
+
+QUESTION_TEMPERATURE = 0.9
+EVALUATION_TEMPERATURE = 0.55
+QUESTIONS_PER_INTERVIEW = 5
+RECENT_QUESTION_LIMIT = 25
 
 class InterviewSystem:
     def __init__(self, model_manager):
@@ -10,6 +17,7 @@ class InterviewSystem:
         self.score = 0
         self.questions_asked = 0
         self.questions = []
+        self.recent_questions = {}
     
     QUESTION_BANK = {
         "Data Science Fundamentals": {
@@ -130,18 +138,94 @@ class InterviewSystem:
     }
     
     def start_interview(self, topic: str, difficulty: str):
-        """Start a new interview session"""
+        """Start a fresh, varied interview without repeating recent questions."""
         self.current_topic = topic
         self.current_difficulty = difficulty
         self.interview_history = []
         self.score = 0
         self.questions_asked = 0
-        
-        if topic in self.QUESTION_BANK and difficulty in self.QUESTION_BANK[topic]:
-            self.questions = self.QUESTION_BANK[topic][difficulty].copy()
-            random.shuffle(self.questions)
-            return True
-        return False
+
+        bank = self.QUESTION_BANK.get(topic, {}).get(difficulty, [])
+        if not bank:
+            self.questions = []
+            return False
+
+        key = (topic, difficulty)
+        recent = self.recent_questions.setdefault(key, [])
+        recent_keys = {self._question_key(question) for question in recent}
+        generated = self._generate_questions(topic, difficulty, recent)
+        questions = []
+        current_keys = set()
+        for question in generated:
+            cleaned = self._clean_question(question)
+            question_key = self._question_key(cleaned)
+            if cleaned and question_key not in recent_keys and question_key not in current_keys:
+                questions.append(cleaned)
+                current_keys.add(question_key)
+
+        fallback = [
+            question for question in bank
+            if self._question_key(question) not in recent_keys
+            and self._question_key(question) not in current_keys
+        ]
+        random.shuffle(fallback)
+        for question in fallback:
+            if len(questions) >= QUESTIONS_PER_INTERVIEW:
+                break
+            questions.append(question)
+            current_keys.add(self._question_key(question))
+
+        if len(questions) < QUESTIONS_PER_INTERVIEW:
+            fallback = [
+                question for question in bank
+                if self._question_key(question) not in current_keys
+            ]
+            random.shuffle(fallback)
+            questions.extend(fallback[:QUESTIONS_PER_INTERVIEW - len(questions)])
+
+        random.shuffle(questions)
+        self.questions = questions[:QUESTIONS_PER_INTERVIEW]
+        recent.extend(self.questions)
+        self.recent_questions[key] = recent[-RECENT_QUESTION_LIMIT:]
+        return bool(self.questions)
+
+    def _generate_questions(self, topic: str, difficulty: str, recent: List[str]) -> List[str]:
+        prompt = (
+            f"Create exactly {QUESTIONS_PER_INTERVIEW} distinct interview questions for a "
+            f"{difficulty}-level candidate in {topic}. Vary the concepts and question styles. "
+            "Do not repeat or paraphrase any recent question. Return questions only.\n\n"
+            "Recent questions to avoid:\n"
+            + ("\n".join(f"- {question}" for question in recent[-15:]) or "- None")
+        )
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "questions": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["questions"],
+        }
+        try:
+            result = self.model.complete_json(
+                prompt, schema, "interview_questions", "reasoning", QUESTION_TEMPERATURE
+            )
+        except Exception:
+            return []
+        if not isinstance(result, dict) or not isinstance(result.get("questions"), list):
+            return []
+        return [
+            self._clean_question(question)
+            for question in result["questions"]
+            if isinstance(question, str) and 10 <= len(question.strip()) <= 300
+        ]
+
+    @staticmethod
+    def _clean_question(question: str) -> str:
+        return " ".join(question.split()).strip()
+
+    @staticmethod
+    def _question_key(question: str) -> str:
+        return " ".join(re.sub(r"[^a-z0-9]+", " ", question.casefold()).split())
     
     def get_next_question(self):
         """Get the next interview question. Safe to call on every rerun."""
@@ -192,7 +276,9 @@ feedback is one constructive paragraph."""
             },
             "required": ["score", "strengths", "improvements", "model_answer", "feedback"],
         }
-        evaluation = self.model.complete_json(eval_prompt, schema, "interview_grade", "reasoning", 0.2)
+        evaluation = self.model.complete_json(
+            eval_prompt, schema, "interview_grade", "reasoning", EVALUATION_TEMPERATURE
+        )
         if not evaluation:
             evaluation = self._default_evaluation()
         try:

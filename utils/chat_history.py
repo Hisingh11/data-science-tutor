@@ -19,12 +19,16 @@ def _clean(message: Dict) -> Dict:
         return {}
     model_content = str(message.get("model_content") or content)
     attachments = [str(path) for path in (message.get("attachments") or [])]
-    return {
+    result = {
         "role": role,
         "content": content,
         "model_content": model_content[:MAX_MODEL_CONTENT],
         "attachments": attachments,
     }
+    log = message.get("self_rag_log")
+    if isinstance(log, dict):
+        result["self_rag_log"] = log
+    return result
 
 
 def load_messages() -> List[Dict]:

@@ -19,21 +19,19 @@ except ImportError:
     REPORTLAB_AVAILABLE = False
 
 class AssignmentManager:
-    def __init__(self, model_manager, upload_dir="./uploads", assignments_dir="./assignments"):
+    def __init__(self, model_manager, assignments_dir="./assignments"):
         self.model = model_manager
-        self.upload_dir = upload_dir
         self.assignments_dir = assignments_dir
-        
-        os.makedirs(upload_dir, exist_ok=True)
+
         os.makedirs(assignments_dir, exist_ok=True)
-    
-    def generate_assignment(self, topic: str, difficulty: str, num_questions: int = 20, student_id: str = "default"):
+
+    def generate_assignment(self, topic: str, difficulty: str, num_questions: int = 20):
         """Generate a comprehensive assignment with PDF"""
         
         assignment_id = hashlib.md5((topic + difficulty + str(datetime.now())).encode()).hexdigest()[:8]
         
         # Generate exactly the number of questions requested
-        questions = self._get_questions(topic, difficulty, num_questions)
+        questions = self._get_questions(topic, num_questions)
         
         # Calculate totals
         total_questions = len(questions)
@@ -194,7 +192,7 @@ QUESTIONS:
         
         return content.encode('utf-8')
     
-    def _get_questions(self, topic: str, difficulty: str, num_questions: int) -> List[Dict]:
+    def _get_questions(self, topic: str, num_questions: int) -> List[Dict]:
         """Generate exactly the number of questions requested"""
         
         question_bank = {

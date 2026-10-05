@@ -1,6 +1,4 @@
-import json
 import math
-import os
 import re
 from typing import Dict, List
 
@@ -12,8 +10,6 @@ STOPWORDS = {
     "do", "does", "did", "me", "my", "we", "our", "you", "your", "please", "explain",
     "tell", "give", "difference", "between", "versus", "vs", "using", "use", "used",
 }
-
-GREETINGS = {"hi", "hello", "hey", "thanks", "thank", "ok", "okay", "yo"}
 
 EXPANSIONS = {
     "rag": ["retrieval", "augmented", "generation"],
@@ -126,16 +122,9 @@ KNOWLEDGE = [
 
 
 class RAGEngine:
-    """BM25 retrieval plus a corrective check (CRAG).
+    """In-memory BM25 retrieval over the tutor's curated knowledge base."""
 
-    Retrieved notes are graded. Notes that do not answer the question are
-    dropped. Web search fills the gap when the local notes are irrelevant
-    or only partly related.
-    """
-
-    def __init__(self, persist_directory="./data/knowledge_base"):
-        self.persist_directory = persist_directory
-        os.makedirs(persist_directory, exist_ok=True)
+    def __init__(self):
         self.documents: List[Dict] = []
         self._loaded = False
         self._index = None
@@ -182,156 +171,11 @@ class RAGEngine:
             })
         return results
 
-    def corrective_retrieve(self, query: str, model=None, n_results: int = 4) -> Dict:
-        cleaned = self._clean_query(query)
-        if not self._worth_retrieving(cleaned):
-            return self._bundle("skip", "", [])
+    def web_notes(self, query: str, max_results: int = 5) -> List[Dict]:
+        """Return DuckDuckGo search snippets for relevance grading by Self-RAG."""
+        return self._web_search(query, max_results=max_results)
 
-        hits = self.search(cleaned, n_results=n_results)
-        graded = self._grade(cleaned, hits, model) if hits else []
-        correct = [item for item in graded if item["grade"] == "correct"]
-        ambiguous = [item for item in graded if item["grade"] == "ambiguous"]
-
-        if not graded and hits:
-            # The grader was unavailable. Keep a hit only when the question's
-            # own words, not just expanded synonyms, appear in it.
-            anchored = [hit for hit in hits if self._anchored(cleaned, hit["text"])]
-            if anchored:
-                correct = [{
-                    "grade": "correct",
-                    "strip": anchored[0]["text"],
-                    "metadata": anchored[0]["metadata"],
-                    "source": "knowledge",
-                }]
-
-        web_notes: List[Dict] = []
-        if correct:
-            action = "correct"
-            chosen = correct
-        elif ambiguous:
-            action = "ambiguous"
-            chosen = ambiguous
-            web_notes = self._web_search(cleaned)
-        else:
-            action = "incorrect"
-            chosen = []
-            web_notes = self._web_search(cleaned)
-
-        blocks = []
-        sources = []
-        for item in chosen:
-            topic = item["metadata"].get("topic", "note")
-            blocks.append(f"[Knowledge base: {topic}]\n{item['strip']}")
-            sources.append({"title": topic, "kind": "knowledge"})
-        for note in web_notes:
-            blocks.append(f"[Web: {note['title']}]\n{note['body']}")
-            sources.append({"title": note["title"], "url": note.get("href", ""), "kind": "web"})
-
-        return self._bundle(action, "\n\n".join(blocks), sources)
-
-    def _bundle(self, action: str, body: str, sources: List[Dict]) -> Dict:
-        instructions = {
-            "correct": (
-                "Retrieval check: the local notes below directly support this question. "
-                "Base the factual parts of the answer on them. Ignore a note if it does not apply."
-            ),
-            "ambiguous": (
-                "Retrieval check: the local notes are only partly related, so short web snippets were added. "
-                "Prefer the local notes if they conflict with a snippet. Do not invent citations."
-            ),
-            "incorrect": (
-                "Retrieval check: the local knowledge base did not contain this answer. "
-                "Web snippets are unverified leads. Use them only when they clearly answer the question. "
-                "If they are off topic, ignore them and answer from standard data science knowledge, "
-                "or say you are not sure."
-            ),
-            "skip": "",
-        }
-        context = ""
-        if body:
-            context = instructions[action] + "\n\n" + body
-        elif action == "incorrect":
-            context = instructions[action]
-        return {"action": action, "context": context, "sources": sources}
-
-    def _grade(self, query: str, hits: List[Dict], model) -> List[Dict]:
-        if model is None or not getattr(model, "client", None):
-            return []
-        numbered = []
-        for idx, hit in enumerate(hits, start=1):
-            numbered.append(f"{idx}. {hit['text']}")
-        prompt = (
-            "Grade each passage for a data science tutor.\n"
-            f"Question: {query}\n\n"
-            "Passages:\n"
-            + "\n".join(numbered)
-            + "\n\nFor each passage set grade to correct, ambiguous, or incorrect.\n"
-            "correct: the passage contains the facts needed to answer.\n"
-            "ambiguous: same general topic, but it does not answer this question.\n"
-            "incorrect: a different topic.\n"
-            "strip: if correct or ambiguous, the one or two sentences that help. Otherwise empty."
-        )
-        schema = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "grades": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "id": {"type": "integer"},
-                            "grade": {"type": "string"},
-                            "strip": {"type": "string"},
-                        },
-                        "required": ["id", "grade", "strip"],
-                    },
-                }
-            },
-            "required": ["grades"],
-        }
-        parsed = None
-        if hasattr(model, "complete_json"):
-            wrapped = model.complete_json(prompt, schema, "passage_grades", "fast", 0.0)
-            if isinstance(wrapped, dict):
-                parsed = wrapped.get("grades")
-        if not isinstance(parsed, list):
-            raw = model.complete(prompt + '\nReturn only a JSON list like [{"id": 1, "grade": "correct", "strip": "..."}].', "fast", 0.0)
-            if not raw or raw.startswith("Error:"):
-                return []
-            match = re.search(r"\[.*\]", raw, re.DOTALL)
-            if not match:
-                return []
-            try:
-                parsed = json.loads(match.group())
-            except json.JSONDecodeError:
-                return []
-        graded = []
-        for item in parsed:
-            if not isinstance(item, dict):
-                continue
-            try:
-                idx = int(item.get("id", 0)) - 1
-            except (TypeError, ValueError):
-                continue
-            if idx < 0 or idx >= len(hits):
-                continue
-            grade = str(item.get("grade", "")).strip().lower()
-            if grade not in {"correct", "ambiguous", "incorrect"}:
-                continue
-            strip = str(item.get("strip") or "").strip()
-            if grade != "incorrect" and len(strip) < 40:
-                strip = hits[idx]["text"]
-            graded.append({
-                "grade": grade,
-                "strip": strip[:700],
-                "metadata": hits[idx]["metadata"],
-                "source": "knowledge",
-            })
-        return graded
-
-    def _web_search(self, query: str, max_results: int = 3) -> List[Dict]:
+    def _web_search(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
             from ddgs import DDGS
             rows = DDGS().text(query, max_results=max_results) or []
@@ -376,12 +220,6 @@ class RAGEngine:
             extra.extend(EXPANSIONS.get(token, []))
         # Original words count twice so a synonym cannot outrank the question.
         return original + original + extra
-
-    def _worth_retrieving(self, query: str) -> bool:
-        tokens = self._tokens(query)
-        if not tokens:
-            return False
-        return any(token not in GREETINGS for token in tokens)
 
     def _anchored(self, query: str, text: str) -> bool:
         needles = set(self._tokens(query))
