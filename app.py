@@ -15,7 +15,6 @@ st.set_page_config(
 
 from ui.state import core, reset_core  # noqa: E402  (set_page_config must run first)
 from ui.theme import esc, inject_css  # noqa: E402
-from utils.chat_history import clear_messages  # noqa: E402
 
 inject_css()
 tools = core()
@@ -60,7 +59,6 @@ with st.sidebar:
     st.markdown('<div class="sb-section">Session</div>', unsafe_allow_html=True)
     if st.button("New chat", icon=":material/add_comment:", width="stretch"):
         st.session_state.messages = []
-        clear_messages()
         st.switch_page("views/chat.py")
     messages = st.session_state.get("messages") or []
     if messages:

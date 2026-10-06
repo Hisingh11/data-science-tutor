@@ -8,7 +8,6 @@ import streamlit as st
 
 from ui.state import core, log_feedback, save_upload, stream_into
 from ui.theme import badge, hero
-from utils.chat_history import load_messages, save_messages
 from utils.image_recognition import analyze_image
 from utils.model_manager import trim_history
 from utils.router import (ASSIGNMENT_TOPICS, INTERVIEW_TOPICS, classify_intent, pick_difficulty,
@@ -31,7 +30,7 @@ SUGGESTIONS = [
 ]
 
 if "messages" not in st.session_state:
-    st.session_state.messages = load_messages()
+    st.session_state.messages = []
 messages = st.session_state.messages
 
 
@@ -113,7 +112,6 @@ def render_messages():
                     log_feedback({"question": question, "answer": msg["content"][:4000],
                                   "rating": "up" if rating == 1 else "down",
                                   "intent": (msg.get("meta") or {}).get("intent", "tutor")})
-                    save_messages(messages)
 
 
 def render_empty():
@@ -201,7 +199,6 @@ if messages and messages[-1]["role"] == "assistant":
         if st.button("Regenerate", icon=":material/refresh:", key="regen"):
             last_user = messages[-2] if len(messages) >= 2 else None
             del messages[-2:]
-            save_messages(messages)
             if last_user:
                 st.session_state.queued = last_user["content"]
             st.rerun()
@@ -266,5 +263,4 @@ if meta.get("intent") == "tutor" and tools.self_rag.last_log:
     assistant["self_rag_log"] = tools.self_rag.last_log
 tools.self_rag.last_log = None
 messages.extend([user_record, assistant])
-save_messages(messages)
 st.rerun()
