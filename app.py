@@ -390,7 +390,7 @@ def make_chat_stream(prompt, user_content, image_note):
         retrieval_query = f"{prompt}\n{image_note[:400]}"
 
     def start(cancel):
-        # The graph may self-correct up to five times before returning.
+        # The graph may self-correct before returning, within its configured retry limit.
         yield from self_rag.iter_answer(retrieval_query, user_content, history, cancel)
 
     return start

@@ -6,10 +6,13 @@ from typing import Dict, List, Optional, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 
-MAX_RETRIES = 5
+MAX_RETRIES = 1
 ANSWER_TEMPERATURE = 0.85
 RETRIEVAL_TEMPERATURE = 0.35
 EVALUATION_TEMPERATURE = 0.35
+
+# Enable/disable web search to reduce latency
+ENABLE_WEB_SEARCH = False
 
 
 class SelfRAGState(TypedDict, total=False):
@@ -35,7 +38,7 @@ class SelfRAGState(TypedDict, total=False):
 
 
 class SelfRAGEngine:
-    """Retrieve, answer, and self-correct with at most five retries."""
+    """Retrieve, answer, and self-correct within the configured retry limit."""
 
     def __init__(self, rag, model, max_retries: int = MAX_RETRIES):
         self.rag = rag
@@ -47,18 +50,25 @@ class SelfRAGEngine:
     def _build_graph(self):
         workflow = StateGraph(SelfRAGState)
         workflow.add_node("retrieve", self._retrieve)
-        workflow.add_node("web_search", self._web_search)
         workflow.add_node("grade_documents", self._grade_documents)
-        workflow.add_node("grade_web", self._grade_web)
         workflow.add_node("combine_context", self._combine_context)
         workflow.add_node("generate", self._generate)
         workflow.add_node("reflect", self._reflect)
         workflow.add_node("prepare_retry", self._prepare_retry)
-        workflow.add_edge(START, "retrieve")
-        workflow.add_edge("retrieve", "web_search")
-        workflow.add_edge("web_search", "grade_documents")
-        workflow.add_edge("grade_documents", "grade_web")
-        workflow.add_edge("grade_web", "combine_context")
+
+        if ENABLE_WEB_SEARCH:
+            workflow.add_node("web_search", self._web_search)
+            workflow.add_node("grade_web", self._grade_web)
+            workflow.add_edge(START, "retrieve")
+            workflow.add_edge("retrieve", "web_search")
+            workflow.add_edge("web_search", "grade_documents")
+            workflow.add_edge("grade_documents", "grade_web")
+            workflow.add_edge("grade_web", "combine_context")
+        else:
+            workflow.add_edge(START, "retrieve")
+            workflow.add_edge("retrieve", "grade_documents")
+            workflow.add_edge("grade_documents", "combine_context")
+
         workflow.add_edge("combine_context", "generate")
         workflow.add_edge("generate", "reflect")
         workflow.add_conditional_edges(
@@ -133,66 +143,14 @@ class SelfRAGEngine:
         if self._cancelled(state) or not candidates:
             return state
 
-        numbered = "\n\n".join(
-            f"{index}. [{item['metadata'].get('topic', 'note')}]\n{item['text'][:500]}"
-            for index, item in enumerate(candidates, start=1)
-        )
-        prompt = (
-            "You are the retrieval critic in a Self-RAG tutor. Select passages that "
-            "contain facts needed to answer the question.\n\n"
-            f"Question: {state['query']}\n\nPassages:\n{numbered}\n\n"
-            "For each passage, relevant is yes only when it helps answer the question. "
-            "Return one or two useful sentences in strip; use an empty strip when irrelevant."
-        )
-        schema = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "grades": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "id": {"type": "integer"},
-                            "relevant": {"type": "string", "enum": ["yes", "no"]},
-                            "strip": {"type": "string"},
-                        },
-                        "required": ["id", "relevant", "strip"],
-                    },
-                }
-            },
-            "required": ["grades"],
-        }
-        state["calls"] = state.get("calls", 0) + 1
-        parsed = self.model.complete_json(
-            prompt, schema, "selfrag_relevance", "fast", RETRIEVAL_TEMPERATURE
-        )
-        grades = parsed.get("grades") if isinstance(parsed, dict) else None
-        selected = []
-        if isinstance(grades, list):
-            for item in grades:
-                if not isinstance(item, dict) or str(item.get("relevant", "")).lower() != "yes":
-                    continue
-                try:
-                    index = int(item.get("id", 0)) - 1
-                except (TypeError, ValueError):
-                    continue
-                if not 0 <= index < len(candidates):
-                    continue
-                candidate = candidates[index]
-                selected.append({
-                    "topic": candidate["metadata"].get("topic", "note"),
-                    "text": str(item.get("strip") or candidate["text"][:400])[:400],
-                })
-
-        if not selected and not isinstance(grades, list):
-            candidate = candidates[0]
-            if self.rag._anchored(state["query"], candidate["text"]):
-                selected.append({
-                    "topic": candidate["metadata"].get("topic", "note"),
-                    "text": candidate["text"][:400],
-                })
+        selected = [
+            {
+                "topic": candidate["metadata"].get("topic", "note"),
+                "text": candidate["text"][:400],
+            }
+            for candidate in candidates
+            if candidate.get("relevance", 0) >= 0.3
+        ]
 
         state["local_notes"] = selected
         state["retrieved"] = [
@@ -320,7 +278,11 @@ class SelfRAGEngine:
     def _generate(self, state: SelfRAGState) -> SelfRAGState:
         if self._cancelled(state):
             return state
-        prompt = state["user_content"]
+        prompt = (
+            f"{state['user_content']}\n\n"
+            "Keep the response focused and proportional to the question. "
+            "Avoid repeating explanations."
+        )
         if state.get("retry_count", 0):
             prompt = (
                 f"Student request:\n{prompt[:1500]}\n\n"
@@ -336,6 +298,7 @@ class SelfRAGEngine:
             context=state.get("context", ""),
             model_type="reasoning",
             temperature=ANSWER_TEMPERATURE,
+            max_tokens=2048,
         )
         state["revised"] = state.get("retry_count", 0) > 0
         state["needs_revision"] = False

@@ -77,7 +77,10 @@ class ModelManager:
     def _error_text(self, exc):
         return f"Error: {exc}"
 
-    def answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.7):
+    def answer(
+        self, prompt, history=None, context="", model_type="reasoning",
+        temperature=0.7, max_tokens=4096,
+    ):
         if not self.client:
             return self.init_error or "API key not configured"
         try:
@@ -85,7 +88,7 @@ class ModelManager:
                 model=self.models.get(model_type, self.models["reasoning"]),
                 messages=self._chat_messages(prompt, history, context),
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=max_tokens,
             )
             return self._message_text(response) or "The model returned an empty response. Try again."
         except Exception as exc:
