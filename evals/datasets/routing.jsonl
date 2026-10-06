@@ -1,0 +1,40 @@
+{"id": "r01", "text": "What is overfitting?", "expected": "tutor"}
+{"id": "r02", "text": "Explain the bias-variance tradeoff", "expected": "tutor"}
+{"id": "r03", "text": "What is an assignment operator in Python?", "expected": "tutor"}
+{"id": "r04", "text": "What are common machine learning interview questions?", "expected": "tutor"}
+{"id": "r05", "text": "How should I prepare for a data science interview?", "expected": "tutor"}
+{"id": "r06", "text": "Can you research how transformers scale?", "expected": "research"}
+{"id": "r07", "text": "Why do we write code in functions?", "expected": "tutor"}
+{"id": "r08", "text": "Interview me on machine learning, beginner", "expected": "interview"}
+{"id": "r09", "text": "Mock interview on generative AI, advanced", "expected": "interview"}
+{"id": "r10", "text": "quiz me on statistics", "expected": "interview"}
+{"id": "r11", "text": "Start a mock interview about Python", "expected": "interview"}
+{"id": "r12", "text": "test me on agentic AI", "expected": "interview"}
+{"id": "r13", "text": "Assignment on Python, intermediate, 8 questions", "expected": "assignment"}
+{"id": "r14", "text": "Give me an assignment on deep learning", "expected": "assignment"}
+{"id": "r15", "text": "Create practice questions on SQL joins", "expected": "assignment"}
+{"id": "r16", "text": "make me a worksheet on regression", "expected": "assignment"}
+{"id": "r17", "text": "grade this: Q1 overfitting means memorising noise", "expected": "grade"}
+{"id": "r18", "text": "Grade my answers below", "expected": "grade"}
+{"id": "r19", "text": "Research retrieval-augmented generation", "expected": "research"}
+{"id": "r20", "text": "look up the latest on mixture of experts", "expected": "research"}
+{"id": "r21", "text": "deep dive into SHAP values", "expected": "research"}
+{"id": "r22", "text": "Fact-check: transformers need labeled data", "expected": "fact_check"}
+{"id": "r23", "text": "fact check that random forests can't overfit", "expected": "fact_check"}
+{"id": "r24", "text": "Is it true that PCA requires scaled features?", "expected": "fact_check"}
+{"id": "r25", "text": "verify the claim that Adam always beats SGD", "expected": "fact_check"}
+{"id": "r26", "text": "Write a Python function that fills missing values", "expected": "code_generate"}
+{"id": "r27", "text": "write code to train a random forest on iris", "expected": "code_generate"}
+{"id": "r28", "text": "Generate a SQL query that finds the top 5 customers by revenue", "expected": "code_generate"}
+{"id": "r29", "text": "Implement k-means from scratch", "expected": "code_generate"}
+{"id": "r30", "text": "implement a function for k-fold cross validation", "expected": "code_generate"}
+{"id": "r31", "text": "Can you build a script that merges CSV files?", "expected": "code_generate"}
+{"id": "r32", "text": "write python to plot a histogram", "expected": "code_generate"}
+{"id": "r33", "text": "Review this code: def f(x): return x/0", "expected": "code_review"}
+{"id": "r34", "text": "debug this function please", "expected": "code_review"}
+{"id": "r35", "text": "```python\nprint(df.head()\n```", "expected": "code_review"}
+{"id": "r36", "text": "fix this code, it throws KeyError", "expected": "code_review"}
+{"id": "r37", "text": "", "expected": "tutor"}
+{"id": "r38", "text": "hello", "expected": "tutor"}
+{"id": "r39", "text": "What is the difference between a generator and a list?", "expected": "tutor"}
+{"id": "r40", "text": "Explain how to write a good research question for a thesis", "expected": "tutor"}

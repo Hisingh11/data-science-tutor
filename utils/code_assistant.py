@@ -25,6 +25,8 @@ class CodeAssistant:
             parts.append(piece)
             yield piece
         text = "".join(parts)
+        if text.startswith(("Error:", "API key not configured", "GROQ_API_KEY", "The groq package")):
+            return
         extracted = self._extract_code(text, language)
         if extracted and len(extracted) >= 10:
             return

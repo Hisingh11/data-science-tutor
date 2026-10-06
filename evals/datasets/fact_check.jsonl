@@ -1,0 +1,8 @@
+{"id": "f01", "claim": "Accuracy is a reliable metric for highly imbalanced fraud detection datasets.", "expected": ["contradicted"]}
+{"id": "f02", "claim": "L1 regularization can drive some model weights exactly to zero.", "expected": ["supported"]}
+{"id": "f03", "claim": "A p-value is the probability that the null hypothesis is true.", "expected": ["contradicted"]}
+{"id": "f04", "claim": "Random forests are trained using bootstrap samples of the training data.", "expected": ["supported"]}
+{"id": "f05", "claim": "The transformer architecture was introduced in the paper 'Attention Is All You Need'.", "expected": ["supported"]}
+{"id": "f06", "claim": "Logistic regression is primarily used for regression on continuous targets.", "expected": ["contradicted"]}
+{"id": "f07", "claim": "Adam always generalizes better than SGD on every task.", "expected": ["contradicted", "mixed"]}
+{"id": "f08", "claim": "K-means clustering requires the number of clusters k to be chosen in advance.", "expected": ["supported"]}

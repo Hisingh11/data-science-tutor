@@ -1,5 +1,6 @@
 import json
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 
 
@@ -44,15 +45,17 @@ class DeepResearchEngine:
             }]
 
     def fact_check(self, claim: str) -> Dict:
-        search_results = self.search_web(claim[:300], max_results=5)
+        search_results = [r for r in self.search_web(claim[:300], max_results=5) if r.get("source") == "web"]
         context = "\n\n".join(
-            f"Source: {result['title']}\nContent: {result['body']}"
+            f"Source: {result['title']} ({result.get('href', '')})\nContent: {result['body']}"
             for result in search_results
-        )
+        ) or "(No web evidence was found.)"
         prompt = (
             f"Fact-check this claim:\n{claim}\n\nEvidence:\n{context}\n\n"
             "Return JSON with keys verdict, confidence, explanation. "
-            "verdict must be one of supported, contradicted, mixed, unverifiable."
+            "verdict must be one of supported, contradicted, mixed, unverifiable. "
+            "confidence is an integer from 0 to 100. Use unverifiable when the evidence "
+            "does not address the claim."
         )
         schema = {
             "type": "object",
@@ -68,11 +71,11 @@ class DeepResearchEngine:
         if hasattr(self.model, "complete_json"):
             parsed = self.model.complete_json(prompt, schema, "fact_check", "reasoning", 0.2)
         if not isinstance(parsed, dict):
-            response = self.model.generate(prompt, "reasoning", 0.2)
+            response = self.model.generate(prompt, "reasoning", 0.2) or ""
             try:
                 match = re.search(r"\{.*\}", response, re.DOTALL)
-                if match:
-                    parsed = json.loads(match.group())
+                parsed = json.loads(match.group()) if match else None
+                if isinstance(parsed, dict):
                     parsed.setdefault("explanation", response[:800])
             except Exception:
                 parsed = {
@@ -86,6 +89,13 @@ class DeepResearchEngine:
         if verdict not in {"supported", "contradicted", "mixed", "unverifiable"}:
             verdict = "unverifiable"
         parsed["verdict"] = verdict
+        try:
+            parsed["confidence"] = max(0, min(100, int(parsed.get("confidence", 50))))
+        except (TypeError, ValueError):
+            parsed["confidence"] = 50
+        parsed["sources"] = [
+            {"title": r.get("title", ""), "url": r.get("href", "")} for r in search_results if r.get("href")
+        ][:5]
         return parsed
 
     def _prepare_research(self, topic: str, context: str = "", cancel=None) -> Dict:
@@ -97,15 +107,21 @@ class DeepResearchEngine:
             f"{topic} practical workflow",
         ]
         all_results = {}
-        for query in queries:
-            if cancel is not None and cancel.is_set():
-                break
-            all_results[query] = self.search_web(query, max_results=4)
+        if not (cancel is not None and cancel.is_set()):
+            # The five searches are independent, so run them together (was sequential).
+            with ThreadPoolExecutor(max_workers=5) as pool:
+                found = list(pool.map(lambda q: self.search_web(q, max_results=4), queries))
+            all_results = dict(zip(queries, found))
         compilation = ""
         for query, results in all_results.items():
+            usable = [r for r in results if r.get("source") == "web"]
+            if not usable:
+                continue
             compilation += f"\n\n=== {query} ===\n"
-            for result in results:
-                compilation += f"\n**{result['title']}**\n{result['body'][:400]}\n"
+            for result in usable:
+                compilation += f"\n**{result['title']}** ({result.get('href', '')})\n{result['body'][:400]}\n"
+        if not compilation.strip():
+            compilation = "(Web search returned no usable results. Say so, then answer from general knowledge and flag it as unverified.)"
         prompt = (
             f"Write an advanced research briefing on {topic} for a data science student.\n"
             f"Source notes:\n{compilation[:8000]}\n\n"

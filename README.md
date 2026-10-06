@@ -1,441 +1,121 @@
 # Data Scientist BOT
 
-A Streamlit tutor for **data science**, **machine learning**, **statistics**, **Python**, **generative AI**, and **agentic AI**.
-
-You talk to one chat box. The app decides whether to answer from its knowledge base, run a mock interview, generate a graded assignment, write or review code, or search the web. There is **no login**. Conversation is saved locally to `data/chat_history.json` so it survives a refresh; **Clear** wipes it.
+An AI tutor for **data science, statistics, machine learning, Python, generative AI and agentic AI**, built with Streamlit, Groq and a LangGraph Self-RAG pipeline.
 
 Made by **Himanshu**.
 
 ---
 
-## What you can do
+## What's inside
 
-| Mode | How to start | What happens |
-| --- | --- | --- |
-| Tutor chat | Ask a normal question | Local BM25 + DuckDuckGo retrieval, source grading, sampled answer, and self-checks |
-| Mock interview | `Interview me on machine learning, beginner` | Five generated questions, scored answers, and a model answer; questions avoid recent repeats |
-| Assignment | `Assignment on Python, intermediate, 8 questions` | Question set in chat and a PDF download |
-| Grading | `grade this:` plus your answers | Scores the last generated assignment |
-| Code | `Write a Python function that fills missing values` | Plan + code, or a review if you paste a fenced block |
-| Research | `Research retrieval-augmented generation` | Web search, summary, and source links |
-| Fact check | `Fact-check: transformers need labeled data` | Verdict plus a short explanation |
-| Files | Paperclip in the message box | Images, PDF, and text-like files up to 50 MB |
-
-Suggested starters on an empty chat:
-
-- Explain the bias-variance tradeoff
-- Interview me on machine learning, beginner
-- Research retrieval-augmented generation
-- Write a Python function that fills missing values
-
----
-
-## Tech stack
-
-| Layer | Choice |
+| Page | What it does |
 | --- | --- |
-| UI | Streamlit (`app.py`) |
-| LLM API | Groq |
-| Chat / reasoning / code | `openai/gpt-oss-120b` (reasoning, code) and `openai/gpt-oss-20b` (fast) |
-| Vision | `qwen/qwen3.8-27b` |
-| Knowledge | BM25 retrieval plus LangGraph Self-RAG in `utils/rag_engine.py` and `utils/self_rag_graph.py` |
-| Orchestration | LangGraph state graph with up to 5 self-correction retries |
-| Web search | `ddgs` (DuckDuckGo) |
-| PDFs | ReportLab to write, pypdf to read |
-| Secrets | `.env` locally, Streamlit secrets in the cloud |
-
-Python **3.10+** (3.12 recommended).
-
----
-
-## Repository layout
-
-```text
-Data_science_tutor/
-├── app.py                 # UI, routing, session, files, streaming
-├── requirements.txt
-├── .env                   # GROQ_API_KEY (not committed)
-├── utils/
-│   ├── model_manager.py   # Groq client, model map, generate + stream
-│   ├── rag_engine.py      # Built-in notes + BM25 search
-│   ├── self_rag_graph.py  # LangGraph Self-RAG with bounded retries
-│   ├── interview.py       # Question banks, scoring, summary
-│   ├── assignment.py      # Question banks, PDF, grade from JSON
-│   ├── code_assistant.py  # Generate / review code (does not run it)
-│   ├── deep_research.py   # Search, research report, fact-check
-│   ├── chat_history.py    # JSON save/load for conversation turns
-│   └── image_recognition.py
-├── assignments/           # Generated JSON + PDF (gitignored)
-└── data/uploads/          # Saved attachments (gitignored)
-```
-
-There is **no** `auth.py` or SQLAlchemy database. Users are not stored.
-
----
-
-## Architecture
-The Streamlit process holds one `ModelManager` and one instance of each tool in `st.session_state`. Every user message goes through a **router**. Special intents skip tutor-chat retrieval. Normal questions use a LangGraph Self-RAG workflow that searches the local corpus and DuckDuckGo, grades both sets of results, samples an answer, evaluates grounding and usefulness, and self-corrects up to five times.
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "themeVariables": {
-    "primaryColor": "#5b4d8a",
-    "primaryTextColor": "#ffffff",
-    "primaryBorderColor": "#3d3470",
-    "lineColor": "#7a6bb5",
-    "secondaryColor": "#efeaf8",
-    "tertiaryColor": "#f4f0fb",
-    "fontFamily": "Segoe UI, sans-serif"
-  }
-}}%%
-flowchart TB
-  subgraph Client["Browser"]
-    U["You"]
-    UI["Streamlit chat<br/>paperclip · Clear · download"]
-  end
-
-  subgraph App["app.py"]
-    R{"Router"}
-    CHAT["Tutor chat"]
-    IV["Interview"]
-    AS["Assignment / grade"]
-    CD["Code"]
-    RS["Research / fact-check"]
-  end
-
-  subgraph Tools["utils/"]
-    MM["ModelManager"]
-    RAG["RAGEngine"]
-    SELF["LangGraph Self-RAG"]
-    INT["InterviewSystem"]
-    ASM["AssignmentManager"]
-    CA["CodeAssistant"]
-    DR["DeepResearchEngine"]
-    VIS["analyze_image"]
-  end
-
-  G["Groq API"]
-  WEB["DuckDuckGo search"]
-  DISK["assignments/ and data/uploads/"]
-
-  U --> UI --> R
-  R -->|default| CHAT
-  R -->|interview| IV
-  R -->|assignment or grade| AS
-  R -->|write / review code| CD
-  R -->|research or fact-check| RS
-
-  CHAT --> SELF
-  SELF --> RAG
-  SELF --> MM
-  RAG --> WEB
-  IV --> INT --> MM
-  AS --> ASM --> MM
-  AS --> DISK
-  CD --> CA --> MM
-  RS --> DR --> WEB
-  DR --> MM
-  UI -.->|images| VIS --> G
-  MM --> G
-
-  classDef user fill:#1f8a84,stroke:#0f5c58,color:#fff,stroke-width:2px
-  classDef ui fill:#5b4d8a,stroke:#3d3470,color:#fff,stroke-width:2px
-  classDef route fill:#c45c26,stroke:#8a3d14,color:#fff,stroke-width:2px
-  classDef mode fill:#efeaf8,stroke:#5b4d8a,color:#3d3470,stroke-width:2px
-  classDef util fill:#3d6ea8,stroke:#244a78,color:#fff,stroke-width:2px
-  classDef ext fill:#d4a017,stroke:#8a6a0a,color:#241f33,stroke-width:2px
-  classDef disk fill:#2d8a4a,stroke:#1b5c30,color:#fff,stroke-width:2px
-
-  class U user
-  class UI ui
-  class R route
-  class CHAT,IV,AS,CD,RS mode
-  class MM,RAG,SELF,INT,ASM,CA,DR,VIS util
-  class G,WEB ext
-  class DISK disk
-```
-
-### What each module owns
-
-**`app.py`**  
-Page chrome, CSS, `ensure_core()`, intent routing, file ingest, chat history in session, streaming display, assignment download button.
-
-**`utils/model_manager.py`**  
-Loads `GROQ_API_KEY` from `.env` or `st.secrets`. Maps `fast`, `reasoning`, and `code` to Groq model ids, assembles chat history and retrieved context, and provides completion, structured-JSON, and streaming methods. Tutor answers use nonzero-temperature sampling.
-
-**`utils/rag_engine.py`**  
-A small built-in corpus (lifecycle, overfitting, metrics, RAG, agents, and similar) indexed with BM25 keyword retrieval. `search` returns ranked local passages; `web_notes` searches DuckDuckGo for external candidates.
-
-**`utils/self_rag_graph.py`**
-A LangGraph workflow that searches the local BM25 corpus and DuckDuckGo on each tutor turn, grades results, retains the highest-scoring relevant web snippets, generates a sampled answer, and evaluates grounding against selected local and web sources. It allows at most five self-correction retries.
-
-**`utils/interview.py`**  
-Generates five topic- and difficulty-specific questions with nonzero sampling, avoids recently asked questions during the session, and uses a shuffled question bank if generation is unavailable. Each answer is scored 0–10 with strengths, gaps, and a model answer.
-
-**`utils/assignment.py`**  
-Builds a question list, writes `assignments/<id>.json` and a PDF, grades a submission against that JSON (or the in-session assignment). PDF extract uses pypdf when you attach a PDF.
-
-**`utils/code_assistant.py`**  
-Asks the code model for a plan and complete snippet, or a review. **Code is never executed** on the server.
-
-**`utils/deep_research.py`**  
-Searches the web, then asks the reasoning model for a report or a fact-check verdict.
-
-**`utils/image_recognition.py`**  
-Base64-encodes the image and calls the vision model so the caption can be appended to the user message.
-
----
-
-## End-to-end request flow
-
-This is the path for one message, including attachments.
-
-```mermaid
-%%{init: {
-  "theme": "base",
-  "themeVariables": {
-    "lineColor": "#7a6bb5",
-    "fontFamily": "Segoe UI, sans-serif"
-  }
-}}%%
-flowchart TD
-  A["Message or suggestion chip"] --> B{"Files attached?"}
-  B -->|yes| C["Save under data/uploads/"]
-  C --> D{"Image / PDF / text?"}
-  D -->|image| E["Vision model describes it"]
-  D -->|pdf| F["Extract text"]
-  D -->|txt py md csv json sql r| G["Read text, cap excerpts per file"]
-  E --> H["Build user_content"]
-  F --> H
-  G --> H
-  B -->|no| H
-  H --> I{"Intent regex in app.route"}
-  I -->|stop interview| J["Clear interview state"]
-  I -->|interview live| K["Score last answer, next question"]
-  I -->|interview / quiz| L["Start 5-question interview"]
-  I -->|assignment / grade| M["Generate PDF or grade"]
-  I -->|research / fact-check| N["Search web + write report"]
-  I -->|write / review code| O["Generate or review, no exec"]
-  I -->|else| P["LangGraph Self-RAG"]
-  J --> Q["Show reply, store two chat messages"]
-  K --> Q
-  L --> Q
-  M --> Q
-  N --> Q
-  O --> Q
-  P --> Q
-
-  classDef start fill:#1f8a84,stroke:#0f5c58,color:#fff,stroke-width:2px
-  classDef decision fill:#c45c26,stroke:#8a3d14,color:#fff,stroke-width:2px
-  classDef file fill:#3d6ea8,stroke:#244a78,color:#fff,stroke-width:2px
-  classDef special fill:#5b4d8a,stroke:#3d3470,color:#fff,stroke-width:2px
-  classDef chat fill:#d4a017,stroke:#8a6a0a,color:#241f33,stroke-width:2px
-  classDef endn fill:#2d8a4a,stroke:#1b5c30,color:#fff,stroke-width:2px
-
-  class A start
-  class B,D,I decision
-  class C,E,F,G,H file
-  class J,K,L,M,N,O special
-  class P chat
-  class Q endn
-```
-
-### Router rules (order matters)
-
-1. `stop interview` / `end interview`, or the **Stop interview** button — leave interview mode.
-2. An interview already running, and the text is **not** a new special intent — treat the message as an answer.
-3. Words like `interview`, `quiz me`, `mock interview`.
-4. `assignment`, `practice questions`, or a line starting with `grade`.
-5. `fact-check`, or a line starting with `research` / `look up`.
-6. A markdown code fence, or phrases like `write code`, `write a function`, `generate code`, `review this code`, `debug this`.
-7. Otherwise tutor chat with LangGraph Self-RAG. The final answer is displayed in chunks after the graph completes.
-
-Interview topics are inferred from the prompt (`data science`, `machine learning` / `ml`, `generative` / `gen ai`, `agent`, `python`). Difficulty defaults to **intermediate** unless the text contains beginner or advanced.
-
----
-
-## Tutor chat + RAG
-
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"lineColor": "#5b4d8a"}}}%%
-sequenceDiagram
-  participant U as You
-  participant A as app.py
-  participant R as RAGEngine
-  participant L as Self-RAG graph
-  participant M as ModelManager
-  participant G as Groq
-  participant W as DuckDuckGo
-
-  U->>A: Question (+ optional file text)
-  A->>L: invoke(query, history)
-  L->>R: search(query)
-  R-->>L: Ranked passages
-  L->>W: Search query (DuckDuckGo)
-  W-->>L: Web snippets
-  L->>M: Grade local and web relevance (temperature 0.35)
-  M->>G: Structured JSON requests
-  G-->>L: Passage grades and web scores
-  L->>M: Generate sampled answer (temperature 0.85)
-  M->>G: Tutor answer request
-  G-->>L: Draft
-  L->>M: Reflect on grounding and usefulness (temperature 0.35)
-  M->>G: Structured JSON request
-  G-->>L: Critique
-  loop Critique requests revision, up to 5 retries
-    L->>M: Regenerate with critique feedback
-    M->>G: Tutor answer request
-    G-->>L: Revised answer
-    L->>M: Reflect on revised answer
-    M->>G: Structured JSON request
-    G-->>L: Updated critique
-  end
-  L-->>A: Final answer and reflection log
-  A-->>U: Display answer
-```
-
-History sent to the model is trimmed by character limits. Text from attachments is appended to the current request; PDFs and text-like files are not added to the persistent RAG corpus.
-
----
-
-## Interview, assignment, code, research
-
-```mermaid
-%%{init: {"theme": "base"}}%%
-flowchart LR
-  subgraph Interview["Interview"]
-    I1["Pick topic + difficulty"] --> I2["Generate 5 varied questions"]
-    I2 --> I3["Avoid recent questions"]
-    I3 --> I4["Score / 10 + model answer"]
-    I4 --> I5["Summary or stop early"]
-  end
-
-  subgraph Assignment["Assignment"]
-    A1["6–15 questions"] --> A2["JSON + PDF on disk"]
-    A2 --> A3["Download button"]
-    A3 --> A4["grade this: …"]
-  end
-
-  subgraph Code["Code"]
-    C1{"Fenced code or review?"}
-    C1 -->|yes| C2["iter_check_code"]
-    C1 -->|no| C3["iter_generate_code"]
-  end
-
-  subgraph Research["Research"]
-    S1["ddgs text search"] --> S2["Reasoning model"]
-    S2 --> S3["Report or verdict + URLs"]
-  end
-
-  classDef iv fill:#5b4d8a,stroke:#3d3470,color:#fff
-  classDef as fill:#1f8a84,stroke:#0f5c58,color:#fff
-  classDef cd fill:#3d6ea8,stroke:#244a78,color:#fff
-  classDef rs fill:#c45c26,stroke:#8a3d14,color:#fff
-  class I1,I2,I3,I4 iv
-  class A1,A2,A3,A4 as
-  class C1,C2,C3 cd
-  class S1,S2,S3 rs
-```
-
-Language for code is **Python** unless the prompt clearly asks for SQL or R.
-
----
-
-## Session and files
-
-- **Chat history** is saved locally to `data/chat_history.json` and loaded on refresh. **Clear** deletes it. Nothing is written to SQLite.
-- **Active interview state** and recent-question tracking live in `st.session_state`; they reset when the Streamlit session ends. The transcript remains in chat history.
-- **Assignments** persist as JSON/PDF under `assignments/` so grading can reload by id.
-- **Uploads** are copied to `data/uploads/` with a short UUID prefix.
-- Images are shown in the thread at 280px width when the path still exists.
-
----
-
-## Models
-
-| Role | Model id | Used for |
-| --- | --- | --- |
-| `reasoning` | `openai/gpt-oss-120b` | Tutor answers, interview questions/evaluation, assignment grading, research |
-| `fast` | `openai/gpt-oss-20b` | Local/web retrieval grading and Self-RAG reflection |
-| `code` | `openai/gpt-oss-120b` | Code generation and review |
-| Vision | `qwen/qwen3.8-27b` | Image attachments via `image_recognition.py` |
-
-Self-RAG uses temperature `0.85` for tutor answers and `0.35` for retrieval grading/reflection. Interview questions use `0.9`; interview evaluation uses `0.55`.
-
-You need a key from [console.groq.com](https://console.groq.com). Older Llama ids in comments (`llama-3.1-8b-instant`, `llama-3.3-70b-versatile`) were retired for developer accounts and are not used.
+| **Tutor Chat** | Ask anything. Answers are grounded in a curated 30-note knowledge base (BM25), drafted, then self-checked for grounding and usefulness and revised if needed. Attach images, PDFs, code or CSVs. Each answer shows grounding/usefulness badges, notes used and latency, plus 👍/👎 feedback. Typing `Research …`, `Fact-check: …`, or pasting code still works inline. |
+| **Research & Fact-check** | Deep research runs 5 parallel DuckDuckGo searches and writes a cited briefing (downloadable as Markdown). Fact-check returns a verdict, confidence and evidence links. |
+| **Code Lab** | Generate Python/SQL/R from a spec, or paste code for a bug-hunting review with a corrected version. |
+| **Mock Interview** | Pick a track and difficulty; get 5 fresh questions, rubric scoring 0–10, strengths/gaps, a model answer each time and a final report with a chart. |
+| **Assignments** | Generate 3–15 mixed questions + PDF, answer per question (or upload a file), get per-question scores and feedback. Saved assignments are listed in a history tab. |
+| **LLM Evals** | Run the eval suites and inspect a scorecard, LLM-as-judge quality scores, failures per case and human feedback from chat. |
 
 ---
 
 ## Run locally
 
-**1. Python 3.10+** (3.12 is a good default on Windows).
-
-**2. Virtualenv and packages**
-
 ```bash
 python -m venv venv
-venv\Scripts\activate
+venv\Scripts\activate            # macOS/Linux: source venv/bin/activate
 pip install -r requirements.txt
-```
-
-On macOS/Linux: `source venv/bin/activate`.
-
-**3. API key**
-
-Create `.env` in the project root:
-
-```
-GROQ_API_KEY=your_key_from_https://console.groq.com
-```
-
-**4. Start**
-
-```bash
+copy .env.example .env           # then put your key in GROQ_API_KEY
 streamlit run app.py
 ```
 
-Open the local URL Streamlit prints (usually `http://localhost:8501`).
+Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`), turn on web search inside Self-RAG (`SELF_RAG_WEB=1`), or pick a separate judge model for evals (`EVAL_JUDGE_MODEL`).
 
-### `requirements.txt`
-
-- `streamlit` — UI
-- `groq` — LLM + vision
-- `python-dotenv` — local secrets
-- `ddgs` — web research
-- `langgraph` — Self-RAG workflow
-- `reportlab` — assignment PDFs
-- `pypdf` — PDF text extract
+`DSBOT_MOCK=1 streamlit run app.py` starts the UI with an offline fake model (no key needed) for UI work.
 
 ---
 
-## Deploy on Streamlit Community Cloud
+## LLM evals
 
-1. Push this repository to GitHub.
-2. Open [share.streamlit.io](https://share.streamlit.io) → **Create app**.
-3. Repository: `Hisingh11/data-science-tutor`
-4. Branch: `main`
-5. Main file: `app.py`
-6. **Advanced settings → Secrets**:
-
-```toml
-GROQ_API_KEY = "your_key_from_https://console.groq.com"
+```bash
+python -m evals.run_evals --offline            # routing, retrieval, JSON parsing (no key, instant)
+python -m evals.run_evals                      # everything, including live Groq suites
+python -m evals.run_evals --suites tutor_qa --limit 5
+python -m evals.run_evals --judge-model <groq-model-id>
 ```
 
-Cloud instances are ephemeral: `assignments/`, `data/uploads/`, and `data/chat_history.json` may not survive a reboot.
+Results go to `evals/results/latest.json` and `evals/results/latest_report.md` (the **LLM Evals** page reads the same file). The command exits non-zero if any suite misses its gate, so it can run in CI.
+
+| Suite | Dataset | Metrics | Gate |
+| --- | --- | --- | --- |
+| `routing` | 40 labelled messages | accuracy, per-intent accuracy, confusions | 90% |
+| `retrieval` | 40 on-topic + 6 off-topic queries | Hit@1, Hit@3, MRR, context precision, off-topic rejection | 85% Hit@1 |
+| `json_parsing` | 7 probes | parser/schema-sanitiser pass rate | 100% |
+| `tutor_qa` | 22 questions (incl. prompt injection, abstention, out-of-KB) | key-point recall, LLM-judge correctness / faithfulness / relevance / clarity (1–5), injection resistance, self-correction rate, latency p50/p90 | 75% pass |
+| `interview_grading` | 14 answers with labelled score bands (incl. 2 injection attempts) | in-band rate, band distance, pairwise ordering, injection resistance | 70% |
+| `code_gen` | 6 specs with unit tests | pass@1 (generated code is executed in a subprocess) | 66% |
+| `fact_check` | 8 labelled claims | verdict accuracy, evidence coverage | 75% |
+
+A tutor case passes when key-point recall ≥ 0.6 **and** the judge gives correctness ≥ 4 and faithfulness ≥ 4. The default judge is the same model family as the tutor; set `EVAL_JUDGE_MODEL` to a different model to reduce self-preference bias. Thumbs-down answers from chat are logged to `data/feedback.jsonl` and listed on the Evals page as candidates for new golden cases.
 
 ---
 
-## Limitations
+## Architecture
 
-- Retrieval is lexical over a **fixed** note set. It is not a vector store and does not index your PDFs into RAG (file text is only appended to that one turn).
-- Web research depends on DuckDuckGo availability and is not a citation-perfect academic search.
-- Code is generated or reviewed, never run. Do not treat it as executed output.
-- Interview and assignment questions come from **hand-written banks**, not a fresh model exam unless the bank is extended in code.
-- One Streamlit session = one interview / current assignment at a time.
+```mermaid
+flowchart TB
+  UI["Streamlit pages<br/>views/*.py"] --> ST["ui/state.py<br/>shared tools per session"]
+  ST --> SELF["Self-RAG graph<br/>retrieve → grade → generate → reflect → (revise)"]
+  ST --> INT["InterviewSystem"]
+  ST --> ASM["AssignmentManager"]
+  ST --> CA["CodeAssistant"]
+  ST --> DR["DeepResearchEngine"]
+  UI --> RT["utils/router.py<br/>chat intent router"]
+  SELF --> RAG["RAGEngine (BM25, 30 notes)"]
+  SELF & INT & ASM & CA & DR --> MM["ModelManager → Groq"]
+  DR --> WEB["DuckDuckGo"]
+  EV["evals/ suites + datasets"] --> SELF & INT & CA & DR & RT & RAG
+```
+
+```text
+app.py                  entry point: navigation, sidebar, theme
+views/                  one file per page (chat, research, code_lab, interview, assignments, evals)
+ui/theme.py             stylesheet + small HTML components
+ui/state.py             cached model/RAG, per-session tools, uploads, feedback log
+utils/model_manager.py  Groq client: retries, reasoning_effort, strict-JSON, usage tracking
+utils/router.py         intent classification for the chat box
+utils/rag_engine.py     knowledge base + BM25 with relevance thresholds
+utils/self_rag_graph.py LangGraph Self-RAG
+utils/interview.py      question banks, rubric scoring
+utils/assignment.py     question banks, PDF, per-question grading
+utils/code_assistant.py code generation / review
+utils/deep_research.py  parallel web research, fact-check
+utils/image_recognition.py vision model with fallbacks
+evals/                  datasets/, suites.py, run_evals.py, mock_model.py, results/
+```
+
+### Models
+
+| Role | Default | Used for |
+| --- | --- | --- |
+| `reasoning` | `openai/gpt-oss-120b` | tutor answers, interview, grading, research, judge |
+| `fast` | `openai/gpt-oss-20b` | Self-RAG reflection and web grading |
+| `code` | `openai/gpt-oss-120b` | code generation and review |
+| vision | `GROQ_VISION_MODEL`, then `qwen/qwen3.8-27b`, then Llama 4 Scout/Maverick | image attachments |
+
+Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Self-RAG allows 1 revision by default.
 
 ---
 
-## License / author
+## Fixes in this version
 
-Personal tutor project by **Himanshu**. Use and fork as you like; add your own Groq key before running.
+- **Hidden reasoning leaked to users.** When `content` was empty the app displayed the model's internal `reasoning`. It now never does.
+- **Empty JSON responses.** gpt-oss calls now send `reasoning_effort` (low for JSON) and a larger token budget; strict schemas are sanitised (Groq rejects `minimum`/`maximum`) and fenced JSON is parsed.
+- **Misrouting.** Keywords anywhere in a message triggered tools ("what is an assignment operator?" made an assignment; "common interview questions?" started an interview; "Write a Python function…" was not recognised as code). The new router scores 40/40 on the routing set vs 23/40 for the old rules.
+- **Irrelevant context.** Any BM25 hit was injected as "relevant notes" (e.g. *p-value* pulled in the feature-scaling note). Notes now need an absolute and relative score; light stemming and 10 new notes (hypothesis testing, A/B tests, distributions/CLT, regression, clustering, missing values, time series, SQL, LLM evaluation, core Python). Hit@1 57.5% → 95%.
+- **Vision model** id is configurable with automatic fallback if Groq reports it unknown.
+- **Self-RAG** retry cap ignored the constructor argument; revisions fired on most answers ("medium" + one gap); README claimed 5 retries + web search that were not enabled. Now honest, configurable, and shows progress steps in the UI.
+- **Assignments** always used the first N bank questions (every assignment identical); now sampled. Grading returns per-question scores; legacy JSON files without totals load correctly; files are written as UTF-8.
+- **Interview grading** has an explicit rubric and ignores instructions inside the candidate's answer (prompt injection).
+- **Research** searches run in parallel (≈5× faster) and failed searches are no longer fed to the model as "sources". Fact-check returns confidence and evidence links.
+- Rate-limit/timeout retries with backoff, friendlier API errors, token/latency tracking shown in the sidebar.

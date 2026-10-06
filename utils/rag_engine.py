@@ -35,7 +35,22 @@ EXPANSIONS = {
     "nlp": ["language", "text"],
     "svm": ["support", "vector"],
     "knn": ["nearest", "neighbors"],
+    "pvalue": ["hypothesis", "significance"],
+    "ab": ["experiment", "variant", "control"],
+    "clt": ["central", "limit", "theorem"],
+    "kmeans": ["clustering", "centroids"],
+    "sql": ["query", "join", "select"],
+    "arima": ["time", "series", "autoregression"],
+    "imputation": ["missing", "impute"],
+    "evals": ["evaluating", "faithfulness", "judge"],
+    "gil": ["global", "interpreter", "lock"],
 }
+
+# A note must score at least this much (BM25) to be used as context at all,
+# and secondary notes must reach a share of the best score. Without this an
+# off-topic question that shares one generic word still dragged a note in.
+MIN_SCORE = 6.0
+MIN_RELATIVE = 0.45
 
 KNOWLEDGE = [
     {
@@ -118,7 +133,58 @@ KNOWLEDGE = [
         "text": "Pandas is the usual Python tool for tables. A DataFrame holds columns, and loc or boolean masks select rows. Missing values show up as NaN. NumPy provides arrays and vectorized math that is much faster than Python loops. Scikit-learn fits models with fit and predicts with predict. Put preprocessing and the model in a Pipeline so the same steps run on new data. Matplotlib and seaborn draw the charts used during exploration.",
         "metadata": {"topic": "Python for data science"},
     },
+    {
+        "text": "A p-value is the probability of seeing data at least as extreme as what you observed if the null hypothesis were true. It is not the probability that the null hypothesis is true. Hypothesis testing compares the p-value with a significance level alpha, often 0.05. A Type I error rejects a true null (false positive) and a Type II error misses a real effect (false negative). Statistical power is one minus the Type II error rate and grows with sample size and effect size. A tiny p-value with a tiny effect can be statistically significant but practically irrelevant, so report effect sizes and confidence intervals too.",
+        "metadata": {"topic": "Hypothesis testing and p-values"},
+    },
+    {
+        "text": "A/B testing randomly splits users between a control and a variant and compares a pre-registered metric. Decide the sample size up front with a power calculation. Peeking at results and stopping as soon as the p-value dips below 0.05 inflates false positives. Check sample ratio mismatch, run for full weekly cycles, and watch guardrail metrics. Testing many metrics or variants at once needs a multiple-comparison correction such as Bonferroni or controlling the false discovery rate.",
+        "metadata": {"topic": "A/B testing"},
+    },
+    {
+        "text": "Common probability distributions: the normal distribution is symmetric and described by mean and standard deviation; the binomial counts successes in a fixed number of yes-or-no trials; the Poisson counts events in a fixed interval; the exponential models waiting time between Poisson events. The central limit theorem says the mean of many independent samples is approximately normal even when the data are not, which is why confidence intervals for means work. Mean is sensitive to outliers, median is robust, and variance measures spread as the average squared deviation.",
+        "metadata": {"topic": "Probability distributions and the CLT"},
+    },
+    {
+        "text": "Linear regression fits a straight-line relationship by minimizing squared error. Coefficients show the expected change in the target for a one-unit change in a feature, holding the others fixed. Its assumptions are linearity, independent errors, constant variance of residuals, and no severe multicollinearity. Logistic regression is a classification model despite its name: it passes a linear score through the sigmoid function to get a probability and is trained with log loss (cross-entropy). Coefficients in logistic regression are changes in log-odds.",
+        "metadata": {"topic": "Linear and logistic regression"},
+    },
+    {
+        "text": "K-means clustering picks k centroids, assigns each point to the nearest centroid, moves each centroid to the mean of its points, and repeats until assignments stop changing. It assumes roughly spherical clusters of similar size and needs scaled features. Choose k with the elbow method or the silhouette score. DBSCAN groups dense regions, finds clusters of any shape, and labels sparse points as noise, so it does not need k. Hierarchical clustering builds a dendrogram you can cut at any level.",
+        "metadata": {"topic": "Clustering: k-means and DBSCAN"},
+    },
+    {
+        "text": "Missing values are handled by first asking why they are missing: completely at random, at random given other columns, or not at random. Options are dropping rows or columns, simple imputation with the mean, median, or most frequent value, model-based imputation such as KNN or iterative imputation, and adding a missing-indicator column. Fit imputers on the training data only. Outliers can be found with the IQR rule (below Q1 minus 1.5 IQR or above Q3 plus 1.5 IQR) or z-scores, and should be investigated before being removed.",
+        "metadata": {"topic": "Missing values and outliers"},
+    },
+    {
+        "text": "Time series data is ordered in time, so random train-test splits leak the future. Use a time-based split or rolling-origin (walk-forward) validation. Look for trend, seasonality, and autocorrelation. ARIMA models combine autoregression, differencing to remove trend, and moving-average error terms. Useful features include lags, rolling means, and calendar fields. Stationarity means the mean and variance do not drift over time, and many classical models assume it.",
+        "metadata": {"topic": "Time series forecasting"},
+    },
+    {
+        "text": "SQL is the standard language for querying relational databases. SELECT chooses columns, WHERE filters rows before grouping, GROUP BY aggregates, and HAVING filters after aggregation. INNER JOIN keeps matching rows from both tables, LEFT JOIN keeps every row from the left table. Window functions such as ROW_NUMBER, RANK, and SUM OVER (PARTITION BY ...) compute values across related rows without collapsing them. Index the columns you filter and join on.",
+        "metadata": {"topic": "SQL for data analysis"},
+    },
+    {
+        "text": "Evaluating LLM applications needs more than accuracy. Common checks are faithfulness or groundedness (is every claim supported by the retrieved context), answer relevance (does it address the question), context precision and recall for the retriever, and task-specific rubrics. LLM-as-a-judge uses a strong model with a clear rubric to score outputs; it should be calibrated against human labels because judges can favor longer answers or their own style. Keep a fixed golden dataset, track latency and token cost, and rerun the suite whenever prompts or models change.",
+        "metadata": {"topic": "Evaluating LLM applications"},
+    },
+    {
+        "text": "Python generators produce values lazily with yield, so they use little memory for large streams. A list comprehension builds a list in one expression, such as [x * 2 for x in data if x > 0]. Decorators wrap a function to add behavior such as timing or retries. Context managers, used with the with statement, guarantee cleanup such as closing a file. The Global Interpreter Lock lets only one thread run Python bytecode at a time, so CPU-bound work uses multiprocessing while I/O-bound work can use threads or asyncio.",
+        "metadata": {"topic": "Core Python concepts"},
+    },
 ]
+
+
+def _stem(token: str) -> str:
+    """Tiny suffix stripper so "memorizing" matches "memorized" and "clusters" matches "cluster"."""
+    if len(token) <= 4 or token in EXPANSIONS:
+        return token
+    for suffix in ("izing", "ising", "ized", "ised", "ing", "ies", "ed", "es", "s"):
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+            base = token[: -len(suffix)]
+            return base + ("y" if suffix == "ies" else "iz" if suffix in ("izing", "ized", "ising", "ised") else "")
+    return token
 
 
 class RAGEngine:
@@ -144,7 +210,7 @@ class RAGEngine:
         self._loaded = True
         return len(self.documents)
 
-    def search(self, query: str, n_results: int = 5) -> List[Dict]:
+    def search(self, query: str, n_results: int = 5, min_score: float = 0.0) -> List[Dict]:
         if not self.documents or not self._index:
             return []
         cleaned = self._clean_query(query)
@@ -153,7 +219,7 @@ class RAGEngine:
             return []
         scores = self._index.score(tokens)
         ranked = sorted(
-            ((score, idx) for idx, score in enumerate(scores) if score > 0),
+            ((score, idx) for idx, score in enumerate(scores) if score >= min_score),
             key=lambda item: item[0],
             reverse=True,
         )[:n_results]
@@ -197,16 +263,25 @@ class RAGEngine:
     def _build_index(self):
         self._index = BM25Index([self._doc_tokens(doc["text"]) for doc in self.documents])
 
+    def relevant(self, query: str, n_results: int = 5) -> List[Dict]:
+        """Search, then keep only notes that clear the relevance thresholds."""
+        hits = self.search(query, n_results=n_results, min_score=MIN_SCORE)
+        return [hit for hit in hits if hit["relevance"] >= MIN_RELATIVE]
+
     def _clean_query(self, query: str) -> str:
         text = query or ""
-        text = re.split(r"\[(Image analysis|Attached file|Attached PDF)", text, maxsplit=1)[0]
+        # Normalise a few multi-part terms so they match the expansion table.
+        text = re.sub(r"(?i)\bp[- ]values?\b", "pvalue p-value", text)
+        text = re.sub(r"(?i)\ba/b\b", "ab", text)
+        text = re.sub(r"(?i)\bk[- ]means\b", "kmeans k-means", text)
+        text = re.split(r"\[(?:Image analysis|Attached file|Attached PDF)", text, maxsplit=1)[0]
         text = re.sub(r"\s+", " ", text).strip()
         return text[:500]
 
     def _tokens(self, text: str) -> List[str]:
         keep = set(EXPANSIONS)
         return [
-            token for token in re.findall(r"[a-z0-9]+", text.lower())
+            _stem(token) for token in re.findall(r"[a-z0-9]+", text.lower())
             if token not in STOPWORDS and (len(token) > 2 or token in keep)
         ]
 
@@ -217,7 +292,7 @@ class RAGEngine:
         original = self._tokens(query)
         extra = []
         for token in original:
-            extra.extend(EXPANSIONS.get(token, []))
+            extra.extend(_stem(word) for word in EXPANSIONS.get(token, []))
         # Original words count twice so a synonym cannot outrank the question.
         return original + original + extra
 

@@ -4,8 +4,8 @@ from typing import Dict, List
 
 HISTORY_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "chat_history.json")
 
-# Keep the file small. The model only replays the last 16 turns anyway,
-# and _chat_messages truncates each one at 8000 characters.
+# Keep the file small. The model only replays ~4,000 characters of recent
+# history (see trim_history), so older turns are for display only.
 MAX_MESSAGES = 200
 MAX_MODEL_CONTENT = 8000
 
@@ -28,6 +28,11 @@ def _clean(message: Dict) -> Dict:
     log = message.get("self_rag_log")
     if isinstance(log, dict):
         result["self_rag_log"] = log
+    meta = message.get("meta")
+    if isinstance(meta, dict):
+        result["meta"] = meta
+    if message.get("rating") in (0, 1):
+        result["rating"] = message["rating"]
     return result
 
 

@@ -1,0 +1,46 @@
+{"id": "k01", "query": "What is overfitting?", "expected_topics": ["Overfitting and bias-variance"]}
+{"id": "k02", "query": "Explain the bias-variance tradeoff", "expected_topics": ["Overfitting and bias-variance"]}
+{"id": "k03", "query": "how do I prevent my model from memorizing the training set", "expected_topics": ["Overfitting and bias-variance"]}
+{"id": "k04", "query": "why does my validation score look too good? leakage?", "expected_topics": ["Validation and data leakage"]}
+{"id": "k05", "query": "k-fold cross-validation vs a single holdout", "expected_topics": ["Validation and data leakage"]}
+{"id": "k06", "query": "precision vs recall", "expected_topics": ["Classification metrics"]}
+{"id": "k07", "query": "what does ROC AUC measure", "expected_topics": ["Classification metrics"]}
+{"id": "k08", "query": "difference between MAE and RMSE", "expected_topics": ["Regression metrics"]}
+{"id": "k09", "query": "what is R-squared", "expected_topics": ["Regression metrics"]}
+{"id": "k10", "query": "what should I check during EDA", "expected_topics": ["Exploratory data analysis"]}
+{"id": "k11", "query": "should I fit the scaler on the full dataset", "expected_topics": ["Feature engineering and scaling"]}
+{"id": "k12", "query": "lasso vs ridge", "expected_topics": ["L1 and L2 regularization"]}
+{"id": "k13", "query": "L1 vs L2 regularization", "expected_topics": ["L1 and L2 regularization"]}
+{"id": "k14", "query": "learning rate too high loss diverges", "expected_topics": ["Gradient descent"]}
+{"id": "k15", "query": "random forest vs gradient boosting", "expected_topics": ["Trees, forests, and boosting"]}
+{"id": "k16", "query": "how does self-attention work in transformers", "expected_topics": ["Neural networks and transformers"]}
+{"id": "k17", "query": "what is RAG", "expected_topics": ["Retrieval-augmented generation"]}
+{"id": "k18", "query": "what is corrective RAG (CRAG)", "expected_topics": ["Corrective RAG"]}
+{"id": "k19", "query": "few-shot prompting vs fine-tuning", "expected_topics": ["Prompting and fine-tuning"]}
+{"id": "k20", "query": "why do LLMs hallucinate", "expected_topics": ["Hallucinations"]}
+{"id": "k21", "query": "explain the ReAct agent pattern", "expected_topics": ["Agents and ReAct"]}
+{"id": "k22", "query": "what are embeddings and cosine similarity", "expected_topics": ["Embeddings"]}
+{"id": "k23", "query": "fraud detection with a rare positive class", "expected_topics": ["Imbalanced data"]}
+{"id": "k24", "query": "how to use SMOTE", "expected_topics": ["Imbalanced data"]}
+{"id": "k25", "query": "pandas DataFrame basics", "expected_topics": ["Python for data science"]}
+{"id": "k26", "query": "what is a p-value", "expected_topics": ["Hypothesis testing and p-values"]}
+{"id": "k27", "query": "type I vs type II error", "expected_topics": ["Hypothesis testing and p-values"]}
+{"id": "k28", "query": "how long should I run an A/B test", "expected_topics": ["A/B testing"]}
+{"id": "k29", "query": "central limit theorem", "expected_topics": ["Probability distributions and the CLT"]}
+{"id": "k30", "query": "poisson vs binomial distribution", "expected_topics": ["Probability distributions and the CLT"]}
+{"id": "k31", "query": "logistic regression coefficients", "expected_topics": ["Linear and logistic regression"]}
+{"id": "k32", "query": "how does k-means choose clusters", "expected_topics": ["Clustering: k-means and DBSCAN"]}
+{"id": "k33", "query": "how to impute missing values", "expected_topics": ["Missing values and outliers"]}
+{"id": "k34", "query": "IQR rule for outliers", "expected_topics": ["Missing values and outliers"]}
+{"id": "k35", "query": "ARIMA and stationarity", "expected_topics": ["Time series forecasting"]}
+{"id": "k36", "query": "LEFT JOIN vs INNER JOIN in SQL", "expected_topics": ["SQL for data analysis"]}
+{"id": "k37", "query": "window functions in SQL", "expected_topics": ["SQL for data analysis"]}
+{"id": "k38", "query": "how do I evaluate an LLM app with LLM-as-a-judge", "expected_topics": ["Evaluating LLM applications"]}
+{"id": "k39", "query": "python decorators and generators", "expected_topics": ["Core Python concepts"]}
+{"id": "k40", "query": "what is the GIL", "expected_topics": ["Core Python concepts"]}
+{"id": "k41", "query": "what is the capital of France", "expected_topics": []}
+{"id": "k42", "query": "tell me a joke", "expected_topics": []}
+{"id": "k43", "query": "how do I bake sourdough bread", "expected_topics": []}
+{"id": "k44", "query": "who won the football match yesterday", "expected_topics": []}
+{"id": "k45", "query": "hi", "expected_topics": []}
+{"id": "k46", "query": "what is the best value for money laptop", "expected_topics": []}

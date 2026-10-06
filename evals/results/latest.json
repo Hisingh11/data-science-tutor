@@ -1,0 +1,915 @@
+{
+  "run_at": "2026-10-06 10:39:55",
+  "mode": "offline",
+  "models": null,
+  "judge_model": null,
+  "limit": 0,
+  "suites": {
+    "routing": {
+      "metrics": {
+        "accuracy": 100.0,
+        "acc_assignment": 100.0,
+        "acc_code_generate": 100.0,
+        "acc_code_review": 100.0,
+        "acc_fact_check": 100.0,
+        "acc_grade": 100.0,
+        "acc_interview": 100.0,
+        "acc_research": 100.0,
+        "acc_tutor": 100.0
+      },
+      "headline": [
+        "accuracy",
+        100.0,
+        "%"
+      ],
+      "confusions": {},
+      "cases": [
+        {
+          "id": "r01",
+          "input": "What is overfitting?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r02",
+          "input": "Explain the bias-variance tradeoff",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r03",
+          "input": "What is an assignment operator in Python?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r04",
+          "input": "What are common machine learning interview questions?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r05",
+          "input": "How should I prepare for a data science interview?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r06",
+          "input": "Can you research how transformers scale?",
+          "expected": "research",
+          "got": "research",
+          "pass": true
+        },
+        {
+          "id": "r07",
+          "input": "Why do we write code in functions?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r08",
+          "input": "Interview me on machine learning, beginner",
+          "expected": "interview",
+          "got": "interview",
+          "pass": true
+        },
+        {
+          "id": "r09",
+          "input": "Mock interview on generative AI, advanced",
+          "expected": "interview",
+          "got": "interview",
+          "pass": true
+        },
+        {
+          "id": "r10",
+          "input": "quiz me on statistics",
+          "expected": "interview",
+          "got": "interview",
+          "pass": true
+        },
+        {
+          "id": "r11",
+          "input": "Start a mock interview about Python",
+          "expected": "interview",
+          "got": "interview",
+          "pass": true
+        },
+        {
+          "id": "r12",
+          "input": "test me on agentic AI",
+          "expected": "interview",
+          "got": "interview",
+          "pass": true
+        },
+        {
+          "id": "r13",
+          "input": "Assignment on Python, intermediate, 8 questions",
+          "expected": "assignment",
+          "got": "assignment",
+          "pass": true
+        },
+        {
+          "id": "r14",
+          "input": "Give me an assignment on deep learning",
+          "expected": "assignment",
+          "got": "assignment",
+          "pass": true
+        },
+        {
+          "id": "r15",
+          "input": "Create practice questions on SQL joins",
+          "expected": "assignment",
+          "got": "assignment",
+          "pass": true
+        },
+        {
+          "id": "r16",
+          "input": "make me a worksheet on regression",
+          "expected": "assignment",
+          "got": "assignment",
+          "pass": true
+        },
+        {
+          "id": "r17",
+          "input": "grade this: Q1 overfitting means memorising noise",
+          "expected": "grade",
+          "got": "grade",
+          "pass": true
+        },
+        {
+          "id": "r18",
+          "input": "Grade my answers below",
+          "expected": "grade",
+          "got": "grade",
+          "pass": true
+        },
+        {
+          "id": "r19",
+          "input": "Research retrieval-augmented generation",
+          "expected": "research",
+          "got": "research",
+          "pass": true
+        },
+        {
+          "id": "r20",
+          "input": "look up the latest on mixture of experts",
+          "expected": "research",
+          "got": "research",
+          "pass": true
+        },
+        {
+          "id": "r21",
+          "input": "deep dive into SHAP values",
+          "expected": "research",
+          "got": "research",
+          "pass": true
+        },
+        {
+          "id": "r22",
+          "input": "Fact-check: transformers need labeled data",
+          "expected": "fact_check",
+          "got": "fact_check",
+          "pass": true
+        },
+        {
+          "id": "r23",
+          "input": "fact check that random forests can't overfit",
+          "expected": "fact_check",
+          "got": "fact_check",
+          "pass": true
+        },
+        {
+          "id": "r24",
+          "input": "Is it true that PCA requires scaled features?",
+          "expected": "fact_check",
+          "got": "fact_check",
+          "pass": true
+        },
+        {
+          "id": "r25",
+          "input": "verify the claim that Adam always beats SGD",
+          "expected": "fact_check",
+          "got": "fact_check",
+          "pass": true
+        },
+        {
+          "id": "r26",
+          "input": "Write a Python function that fills missing values",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r27",
+          "input": "write code to train a random forest on iris",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r28",
+          "input": "Generate a SQL query that finds the top 5 customers by revenue",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r29",
+          "input": "Implement k-means from scratch",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r30",
+          "input": "implement a function for k-fold cross validation",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r31",
+          "input": "Can you build a script that merges CSV files?",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r32",
+          "input": "write python to plot a histogram",
+          "expected": "code_generate",
+          "got": "code_generate",
+          "pass": true
+        },
+        {
+          "id": "r33",
+          "input": "Review this code: def f(x): return x/0",
+          "expected": "code_review",
+          "got": "code_review",
+          "pass": true
+        },
+        {
+          "id": "r34",
+          "input": "debug this function please",
+          "expected": "code_review",
+          "got": "code_review",
+          "pass": true
+        },
+        {
+          "id": "r35",
+          "input": "```python\nprint(df.head()\n```",
+          "expected": "code_review",
+          "got": "code_review",
+          "pass": true
+        },
+        {
+          "id": "r36",
+          "input": "fix this code, it throws KeyError",
+          "expected": "code_review",
+          "got": "code_review",
+          "pass": true
+        },
+        {
+          "id": "r37",
+          "input": "",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r38",
+          "input": "hello",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r39",
+          "input": "What is the difference between a generator and a list?",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        },
+        {
+          "id": "r40",
+          "input": "Explain how to write a good research question for a thesis",
+          "expected": "tutor",
+          "got": "tutor",
+          "pass": true
+        }
+      ],
+      "seconds": 0.0,
+      "threshold": 90,
+      "status": "pass",
+      "run_at": "2026-10-06 10:39:55",
+      "mode": "offline"
+    },
+    "retrieval": {
+      "metrics": {
+        "hit@1": 95.0,
+        "hit@3": 100.0,
+        "mrr": 0.975,
+        "context_precision": 88.3,
+        "offtopic_rejection": 83.3
+      },
+      "headline": [
+        "hit@1",
+        95.0,
+        "%"
+      ],
+      "cases": [
+        {
+          "id": "k01",
+          "input": "What is overfitting?",
+          "expected": [
+            "Overfitting and bias-variance"
+          ],
+          "got": [
+            "Overfitting and bias-variance"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k02",
+          "input": "Explain the bias-variance tradeoff",
+          "expected": [
+            "Overfitting and bias-variance"
+          ],
+          "got": [
+            "Overfitting and bias-variance",
+            "L1 and L2 regularization"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k03",
+          "input": "how do I prevent my model from memorizing the training set",
+          "expected": [
+            "Overfitting and bias-variance"
+          ],
+          "got": [
+            "Overfitting and bias-variance",
+            "L1 and L2 regularization",
+            "Validation and data leakage"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k04",
+          "input": "why does my validation score look too good? leakage?",
+          "expected": [
+            "Validation and data leakage"
+          ],
+          "got": [
+            "Validation and data leakage",
+            "Overfitting and bias-variance",
+            "Data science lifecycle"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k05",
+          "input": "k-fold cross-validation vs a single holdout",
+          "expected": [
+            "Validation and data leakage"
+          ],
+          "got": [
+            "Validation and data leakage",
+            "Feature engineering and scaling"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k06",
+          "input": "precision vs recall",
+          "expected": [
+            "Classification metrics"
+          ],
+          "got": [
+            "Classification metrics",
+            "Imbalanced data",
+            "Evaluating LLM applications"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k07",
+          "input": "what does ROC AUC measure",
+          "expected": [
+            "Classification metrics"
+          ],
+          "got": [
+            "Classification metrics"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k08",
+          "input": "difference between MAE and RMSE",
+          "expected": [
+            "Regression metrics"
+          ],
+          "got": [
+            "Regression metrics"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k09",
+          "input": "what is R-squared",
+          "expected": [
+            "Regression metrics"
+          ],
+          "got": [
+            "Regression metrics"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k10",
+          "input": "what should I check during EDA",
+          "expected": [
+            "Exploratory data analysis"
+          ],
+          "got": [
+            "Exploratory data analysis"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k11",
+          "input": "should I fit the scaler on the full dataset",
+          "expected": [
+            "Feature engineering and scaling"
+          ],
+          "got": [
+            "Feature engineering and scaling",
+            "A/B testing"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k12",
+          "input": "lasso vs ridge",
+          "expected": [
+            "L1 and L2 regularization"
+          ],
+          "got": [
+            "L1 and L2 regularization"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k13",
+          "input": "L1 vs L2 regularization",
+          "expected": [
+            "L1 and L2 regularization"
+          ],
+          "got": [
+            "L1 and L2 regularization"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k14",
+          "input": "learning rate too high loss diverges",
+          "expected": [
+            "Gradient descent"
+          ],
+          "got": [
+            "Gradient descent"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k15",
+          "input": "random forest vs gradient boosting",
+          "expected": [
+            "Trees, forests, and boosting"
+          ],
+          "got": [
+            "Trees, forests, and boosting"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k16",
+          "input": "how does self-attention work in transformers",
+          "expected": [
+            "Neural networks and transformers"
+          ],
+          "got": [
+            "Neural networks and transformers"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k17",
+          "input": "what is RAG",
+          "expected": [
+            "Retrieval-augmented generation"
+          ],
+          "got": [
+            "Retrieval-augmented generation"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k18",
+          "input": "what is corrective RAG (CRAG)",
+          "expected": [
+            "Corrective RAG"
+          ],
+          "got": [
+            "Retrieval-augmented generation",
+            "Corrective RAG"
+          ],
+          "pass": false
+        },
+        {
+          "id": "k19",
+          "input": "few-shot prompting vs fine-tuning",
+          "expected": [
+            "Prompting and fine-tuning"
+          ],
+          "got": [
+            "Prompting and fine-tuning"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k20",
+          "input": "why do LLMs hallucinate",
+          "expected": [
+            "Hallucinations"
+          ],
+          "got": [
+            "Hallucinations"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k21",
+          "input": "explain the ReAct agent pattern",
+          "expected": [
+            "Agents and ReAct"
+          ],
+          "got": [
+            "Agents and ReAct"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k22",
+          "input": "what are embeddings and cosine similarity",
+          "expected": [
+            "Embeddings"
+          ],
+          "got": [
+            "Embeddings"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k23",
+          "input": "fraud detection with a rare positive class",
+          "expected": [
+            "Imbalanced data"
+          ],
+          "got": [
+            "Imbalanced data"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k24",
+          "input": "how to use SMOTE",
+          "expected": [
+            "Imbalanced data"
+          ],
+          "got": [
+            "Imbalanced data"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k25",
+          "input": "pandas DataFrame basics",
+          "expected": [
+            "Python for data science"
+          ],
+          "got": [
+            "Python for data science"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k26",
+          "input": "what is a p-value",
+          "expected": [
+            "Hypothesis testing and p-values"
+          ],
+          "got": [
+            "Hypothesis testing and p-values"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k27",
+          "input": "type I vs type II error",
+          "expected": [
+            "Hypothesis testing and p-values"
+          ],
+          "got": [
+            "Hypothesis testing and p-values"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k28",
+          "input": "how long should I run an A/B test",
+          "expected": [
+            "A/B testing"
+          ],
+          "got": [
+            "A/B testing"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k29",
+          "input": "central limit theorem",
+          "expected": [
+            "Probability distributions and the CLT"
+          ],
+          "got": [
+            "Probability distributions and the CLT"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k30",
+          "input": "poisson vs binomial distribution",
+          "expected": [
+            "Probability distributions and the CLT"
+          ],
+          "got": [
+            "Probability distributions and the CLT"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k31",
+          "input": "logistic regression coefficients",
+          "expected": [
+            "Linear and logistic regression"
+          ],
+          "got": [
+            "Linear and logistic regression"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k32",
+          "input": "how does k-means choose clusters",
+          "expected": [
+            "Clustering: k-means and DBSCAN"
+          ],
+          "got": [
+            "Clustering: k-means and DBSCAN"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k33",
+          "input": "how to impute missing values",
+          "expected": [
+            "Missing values and outliers"
+          ],
+          "got": [
+            "Exploratory data analysis",
+            "Missing values and outliers",
+            "Python for data science"
+          ],
+          "pass": false
+        },
+        {
+          "id": "k34",
+          "input": "IQR rule for outliers",
+          "expected": [
+            "Missing values and outliers"
+          ],
+          "got": [
+            "Missing values and outliers"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k35",
+          "input": "ARIMA and stationarity",
+          "expected": [
+            "Time series forecasting"
+          ],
+          "got": [
+            "Time series forecasting"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k36",
+          "input": "LEFT JOIN vs INNER JOIN in SQL",
+          "expected": [
+            "SQL for data analysis"
+          ],
+          "got": [
+            "SQL for data analysis"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k37",
+          "input": "window functions in SQL",
+          "expected": [
+            "SQL for data analysis"
+          ],
+          "got": [
+            "SQL for data analysis"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k38",
+          "input": "how do I evaluate an LLM app with LLM-as-a-judge",
+          "expected": [
+            "Evaluating LLM applications"
+          ],
+          "got": [
+            "Evaluating LLM applications"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k39",
+          "input": "python decorators and generators",
+          "expected": [
+            "Core Python concepts"
+          ],
+          "got": [
+            "Core Python concepts"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k40",
+          "input": "what is the GIL",
+          "expected": [
+            "Core Python concepts"
+          ],
+          "got": [
+            "Core Python concepts"
+          ],
+          "pass": true
+        },
+        {
+          "id": "k41",
+          "input": "what is the capital of France",
+          "expected": [],
+          "got": [],
+          "pass": true
+        },
+        {
+          "id": "k42",
+          "input": "tell me a joke",
+          "expected": [],
+          "got": [],
+          "pass": true
+        },
+        {
+          "id": "k43",
+          "input": "how do I bake sourdough bread",
+          "expected": [],
+          "got": [],
+          "pass": true
+        },
+        {
+          "id": "k44",
+          "input": "who won the football match yesterday",
+          "expected": [],
+          "got": [],
+          "pass": true
+        },
+        {
+          "id": "k45",
+          "input": "hi",
+          "expected": [],
+          "got": [],
+          "pass": true
+        },
+        {
+          "id": "k46",
+          "input": "what is the best value for money laptop",
+          "expected": [],
+          "got": [
+            "Hypothesis testing and p-values"
+          ],
+          "pass": false
+        }
+      ],
+      "seconds": 0.0,
+      "threshold": 85,
+      "status": "pass",
+      "run_at": "2026-10-06 10:39:55",
+      "mode": "offline"
+    },
+    "json_parsing": {
+      "metrics": {
+        "pass_rate": 100.0
+      },
+      "headline": [
+        "pass_rate",
+        100.0,
+        "%"
+      ],
+      "cases": [
+        {
+          "id": "j1",
+          "input": "{\"a\": 1}",
+          "expected": {
+            "a": 1
+          },
+          "got": {
+            "a": 1
+          },
+          "pass": true
+        },
+        {
+          "id": "j2",
+          "input": "```json\n{\"a\": 1}\n```",
+          "expected": {
+            "a": 1
+          },
+          "got": {
+            "a": 1
+          },
+          "pass": true
+        },
+        {
+          "id": "j3",
+          "input": "Sure! Here it is: {\"a\": {\"b\": 2}} Hope that helps.",
+          "expected": {
+            "a": {
+              "b": 2
+            }
+          },
+          "got": {
+            "a": {
+              "b": 2
+            }
+          },
+          "pass": true
+        },
+        {
+          "id": "j4",
+          "input": "[1, 2]",
+          "expected": null,
+          "got": null,
+          "pass": true
+        },
+        {
+          "id": "j5",
+          "input": "",
+          "expected": null,
+          "got": null,
+          "pass": true
+        },
+        {
+          "id": "j6",
+          "input": "not json",
+          "expected": null,
+          "got": null,
+          "pass": true
+        },
+        {
+          "id": "j7",
+          "input": "sanitize_schema strips min/max",
+          "expected": true,
+          "got": true,
+          "pass": true
+        }
+      ],
+      "seconds": 0.2,
+      "threshold": 100,
+      "status": "pass",
+      "run_at": "2026-10-06 10:39:55",
+      "mode": "offline"
+    }
+  },
+  "seconds": 0.2
+}

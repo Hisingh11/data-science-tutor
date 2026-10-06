@@ -1,18 +1,21 @@
 """LangGraph Self-RAG workflow for tutor chat."""
 
+import os
 from threading import Event
-from typing import Dict, List, Optional, TypedDict
+from typing import Callable, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 
 MAX_RETRIES = 1
-ANSWER_TEMPERATURE = 0.85
+# Factual tutoring: lower temperature means fewer invented details.
+ANSWER_TEMPERATURE = 0.5
 RETRIEVAL_TEMPERATURE = 0.35
 EVALUATION_TEMPERATURE = 0.35
 
-# Enable/disable web search to reduce latency
-ENABLE_WEB_SEARCH = False
+# Web search adds a DuckDuckGo call plus a grading call per question.
+# Off by default for latency; set SELF_RAG_WEB=1 in .env to turn it on.
+ENABLE_WEB_SEARCH = os.getenv("SELF_RAG_WEB", "0").strip().lower() in {"1", "true", "yes"}
 
 
 class SelfRAGState(TypedDict, total=False):
@@ -35,6 +38,8 @@ class SelfRAGState(TypedDict, total=False):
     support: str
     usefulness: str
     revised: bool
+    claims_total: int
+    claims_unsupported: int
 
 
 class SelfRAGEngine:
@@ -43,8 +48,11 @@ class SelfRAGEngine:
     def __init__(self, rag, model, max_retries: int = MAX_RETRIES):
         self.rag = rag
         self.model = model
-        self.max_retries = min(MAX_RETRIES, max(0, int(max_retries)))
+        # Honour the caller's value (the old code silently capped it at MAX_RETRIES).
+        self.max_retries = max(0, min(5, int(max_retries)))
         self.last_log: Optional[Dict] = None
+        self.last_context: str = ""
+        self.on_step: Optional[Callable[[str], None]] = None
         self.graph = self._build_graph()
 
     def _build_graph(self):
@@ -79,9 +87,21 @@ class SelfRAGEngine:
         workflow.add_edge("prepare_retry", "generate")
         return workflow.compile()
 
+    def _step(self, label: str):
+        if self.on_step:
+            try:
+                self.on_step(label)
+            except Exception:
+                pass
+
+    def run(self, query: str, user_content: str, history=None, cancel=None) -> str:
+        """Run the graph and return the final answer (used by the eval harness)."""
+        return "".join(self.iter_answer(query, user_content, history, cancel))
+
     def iter_answer(self, query: str, user_content: str, history=None, cancel=None):
         """Run the graph and yield the completed answer in display-sized chunks."""
         self.last_log = None
+        self.last_context = ""
         state: SelfRAGState = {
             "query": query,
             "user_content": user_content,
@@ -106,6 +126,7 @@ class SelfRAGEngine:
         try:
             result = self.graph.invoke(state, config={"recursion_limit": 32})
             answer = result.get("answer", "")
+            self.last_context = result.get("context", "")
             self.last_log = {
                 "llm_checks": result.get("calls", 0),
                 "retries_used": result.get("retry_count", 0),
@@ -115,6 +136,8 @@ class SelfRAGEngine:
                 "support": result.get("support", "not checked"),
                 "usefulness": result.get("usefulness", "not checked"),
                 "revised": result.get("revised", False),
+                "claims_total": result.get("claims_total", 0),
+                "claims_unsupported": result.get("claims_unsupported", 0),
             }
         except Exception:
             self.last_log = {
@@ -134,8 +157,9 @@ class SelfRAGEngine:
     def _retrieve(self, state: SelfRAGState) -> SelfRAGState:
         if self._cancelled(state):
             return state
+        self._step("Searching the knowledge base")
         query = state.get("query", "")
-        state["candidates"] = self.rag.search(query, n_results=5) if query.strip() else []
+        state["candidates"] = self.rag.relevant(query, n_results=4) if query.strip() else []
         return state
 
     def _grade_documents(self, state: SelfRAGState) -> SelfRAGState:
@@ -146,11 +170,11 @@ class SelfRAGEngine:
         selected = [
             {
                 "topic": candidate["metadata"].get("topic", "note"),
-                "text": candidate["text"][:400],
+                "text": candidate["text"][:900],
             }
             for candidate in candidates
-            if candidate.get("relevance", 0) >= 0.3
         ]
+        self._step(f"Kept {len(selected)} relevant note(s)")
 
         state["local_notes"] = selected
         state["retrieved"] = [
@@ -164,6 +188,7 @@ class SelfRAGEngine:
     def _web_search(self, state: SelfRAGState) -> SelfRAGState:
         if self._cancelled(state):
             return state
+        self._step("Searching the web")
         state["web_candidates"] = self.rag.web_notes(
             state.get("query", ""), max_results=5
         ) or []
@@ -278,6 +303,7 @@ class SelfRAGEngine:
     def _generate(self, state: SelfRAGState) -> SelfRAGState:
         if self._cancelled(state):
             return state
+        self._step("Revising the draft" if state.get("retry_count", 0) else "Writing the answer")
         prompt = (
             f"{state['user_content']}\n\n"
             "Keep the response focused and proportional to the question. "
@@ -308,6 +334,7 @@ class SelfRAGEngine:
         answer = state.get("answer", "")
         if self._cancelled(state) or self._model_error(answer):
             return state
+        self._step("Self-checking grounding and usefulness")
         prompt = (
             "Evaluate this tutor answer. Judge factual claims against all supplied retrieved "
             "evidence, including local knowledge and web sources, and judge whether it answers "
@@ -372,11 +399,15 @@ class SelfRAGEngine:
             else "claims grounded"
         )
         state["usefulness"] = f"{useful} ({len(missing)} gap(s))" if missing else useful
+        # Revise only for real problems. "medium with one gap" used to trigger a
+        # full regeneration on most questions, doubling latency for little gain.
         state["needs_revision"] = (
             (has_sources and bool(unsupported))
             or useful == "low"
-            or (useful == "medium" and bool(missing))
+            or (useful == "medium" and len(missing) >= 2)
         )
+        state["claims_total"] = len([c for c in claims if isinstance(c, dict) and c.get("support") != "not_a_claim"])
+        state["claims_unsupported"] = len(unsupported)
         state["feedback"] = (
             f"Unsupported claims: {'; '.join(unsupported) or 'none'}\n"
             f"Missing points: {'; '.join(missing) or 'none'}"
@@ -401,7 +432,8 @@ class SelfRAGEngine:
 
     @staticmethod
     def _model_error(answer: str) -> bool:
-        return answer.startswith(("Error:", "API key not configured", "GROQ_API_KEY"))
+        return (answer or "").startswith(("Error:", "API key not configured", "GROQ_API_KEY",
+                                          "The groq package", "The model returned an empty"))
 
     @staticmethod
     def _chunks(text: str, step: int = 48):
