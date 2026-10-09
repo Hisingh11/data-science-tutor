@@ -114,24 +114,29 @@ Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Self-RAG allows 1
 
 ### Prompt-injection safeguards
 
-Model calls use a shared security policy that rejects attempts to reveal hidden
-instructions or secrets and treats uploaded files, retrieved notes, web snippets,
+Model calls use a shared security policy that instructs the model not to reveal
+hidden instructions or secrets and treats uploaded files, retrieved notes, web snippets,
 images/OCR, code comments, and prior conversation as untrusted data. Source material
 and conversation history are sent separately from system instructions, serialized
-as JSON; the vision path applies the same policy. Generated content is independently
-screened for toxicity before it reaches the UI. The app does not expose model tools
-or execute code from prompts or source material.
+as JSON; the vision path applies the same policy. Before toxicity moderation, generated
+text is locally withheld if it contains the configured Groq API key or a long,
+verbatim excerpt from system instructions. This applies to normal, streamed, JSON, and
+image responses. Generated content is also independently screened for toxicity before
+it reaches the UI. The app does not expose model tools or execute code from prompts or
+source material.
 
-These are layered mitigations, not a mathematical guarantee: prompt injection and
-toxicity classification can both fail on edge cases. Do not put secrets in prompts
-or retrievable content, and do not grant the model privileged tools without adding
-independent authorization and output validation.
+These are layered mitigations, not a mathematical guarantee: the local check cannot
+reliably detect paraphrased instructions or arbitrary sensitive data, and prompt
+injection and toxicity classification can fail on edge cases. Do not put secrets in
+prompts or retrievable content, and do not grant the model privileged tools without
+adding independent authorization and output validation.
 
 ---
 
 ## Fixes in this version
 
 - **Hidden reasoning leaked to users.** When `content` was empty the app displayed the model's internal `reasoning`. It now never does.
+- **Verbatim instruction/credential disclosure.** Model output is now locally checked for long excerpts of system instructions and the configured Groq API key before moderation or display.
 - **Empty JSON responses.** gpt-oss calls now send `reasoning_effort` (low for JSON) and a larger token budget; strict schemas are sanitised (Groq rejects `minimum`/`maximum`) and fenced JSON is parsed.
 - **Misrouting.** Keywords anywhere in a message triggered tools ("what is an assignment operator?" made an assignment; "common interview questions?" started an interview; "Write a Python function…" was not recognised as code). The new router scores 40/40 on the routing set vs 23/40 for the old rules.
 - **Irrelevant context.** Any BM25 hit was injected as "relevant notes" (e.g. *p-value* pulled in the feature-scaling note). Notes now need an absolute and relative score; light stemming and 10 new notes (hypothesis testing, A/B tests, distributions/CLT, regression, clustering, missing values, time series, SQL, LLM evaluation, core Python). Hit@1 57.5% → 95%.

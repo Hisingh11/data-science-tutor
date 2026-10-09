@@ -74,6 +74,10 @@ SAFETY_UNAVAILABLE_MESSAGE = (
     "I couldn't display the response because the toxicity safety check was unavailable. "
     "Please try again later."
 )
+LEAKAGE_BLOCKED_MESSAGE = (
+    "I couldn't display that response because it may contain confidential instructions "
+    "or credentials."
+)
 SAFETY_MODEL = os.getenv("GROQ_MODERATION_MODEL", "meta-llama/llama-guard-4-12b")
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
@@ -169,6 +173,29 @@ def check_output_toxicity(text: str, create_completion) -> Optional[bool]:
     return None
 
 
+def contains_protected_content(text: str, protected_values=()) -> bool:
+    """Detect credentials or long verbatim excerpts from protected instructions."""
+    output = str(text or "")
+    normalized_output = re.sub(r"\s+", " ", output).casefold()
+    for value in protected_values:
+        if not value:
+            continue
+        value = str(value)
+        if value in output:
+            return True
+        normalized_value = re.sub(r"\s+", " ", value).strip().casefold()
+        excerpt_length = 48
+        if len(normalized_value) < excerpt_length:
+            continue
+        for start in range(0, len(normalized_value) - excerpt_length + 1, 24):
+            excerpt = normalized_value[start:start + excerpt_length]
+            if excerpt in normalized_output:
+                return True
+        if normalized_value[-excerpt_length:] in normalized_output:
+            return True
+    return False
+
+
 class ModelManager:
     def __init__(self):
         self.api_key = get_groq_api_key()
@@ -234,8 +261,18 @@ class ModelManager:
         # Only the visible answer. Hidden reasoning is never shown to students.
         return (getattr(message, "content", None) or "").strip()
 
-    def _screen_output(self, text: str) -> Optional[str]:
-        if not text or text.startswith((
+    def _screen_output(self, text: str, protected_values=()) -> Optional[str]:
+        if not text:
+            return None
+        protected_values = (
+            SYSTEM_PROMPT,
+            INJECTION_RESISTANCE_PROMPT,
+            getattr(self, "api_key", ""),
+            *protected_values,
+        )
+        if contains_protected_content(text, protected_values):
+            return LEAKAGE_BLOCKED_MESSAGE
+        if text.startswith((
             "Error:", "API key not configured", "GROQ_API_KEY",
             "The groq package", "The model returned an empty",
         )):
@@ -318,7 +355,9 @@ class ModelManager:
                 max_tokens=max_tokens,
             )
             text = self._message_text(response) or "The model returned an empty response. Try again."
-            return self._screen_output(text) or text
+            return self._screen_output(
+                text, protected_values=(messages[0]["content"],)
+            ) or text
         except Exception as exc:
             return self._error_text(exc)
 
@@ -364,7 +403,9 @@ class ModelManager:
                     response_format=response_format,
                 )
                 generated = self._message_text(response)
-                if self._screen_output(generated) is not None:
+                if self._screen_output(
+                    generated, protected_values=(messages[0]["content"],)
+                ) is not None:
                     return None
                 parsed = parse_json_text(generated)
                 if isinstance(parsed, dict):
@@ -380,11 +421,12 @@ class ModelManager:
             return
         model = self.models.get(model_type, self.models["reasoning"])
         started = time.perf_counter()
+        messages = self._chat_messages(prompt, history, context)
         try:
             stream = self._create(
                 effort="medium",
                 model=model,
-                messages=self._chat_messages(prompt, history, context),
+                messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 stream=True,
@@ -397,7 +439,9 @@ class ModelManager:
                         parts.append(text)
             self._record(model, started)
             answer = "".join(parts)
-            yield self._screen_output(answer) or answer
+            yield self._screen_output(
+                answer, protected_values=(messages[0]["content"],)
+            ) or answer
         except Exception as exc:
             yield self._error_text(exc)
 
