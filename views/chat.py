@@ -129,7 +129,7 @@ def render_empty():
 
 
 # ------------------------------------------------------------------ intents
-def respond(prompt, user_content, image_note, status):
+def respond(prompt, user_content, image_note, status, attached_context=""):
     """Return (generator_or_text, meta)."""
     intent = classify_intent(prompt)
     meta = {"intent": intent}
@@ -150,9 +150,9 @@ def respond(prompt, user_content, image_note, status):
         return f"The Assignments page can {what}, with per-question scores and feedback.", meta
 
     if intent == "fact_check":
-        claim = re.sub(r"(?i)^(fact[- ]?check|verify( this| the claim)?)\s*:?\s*", "", user_content).strip()
+        claim = re.sub(r"(?i)^(fact[- ]?check|verify( this| the claim)?)\s*:?\s*", "", prompt).strip()
         status.update(label="Searching the web for evidence…")
-        result = tools.research.fact_check(claim or user_content)
+        result = tools.research.fact_check(claim or prompt, context=attached_context)
         icon = {"supported": "✅", "contradicted": "❌", "mixed": "⚖️"}.get(result["verdict"], "❔")
         text = (f"{icon} **Verdict: {result['verdict'].title()}** · confidence {result['confidence']}%\n\n"
                 f"{result.get('explanation', '')}")
@@ -163,7 +163,9 @@ def respond(prompt, user_content, image_note, status):
     if intent == "research":
         topic = re.sub(r"(?i)^(research|look up|deep dive( into| on)?|find sources( on| about)?)\s*:?\s*", "", prompt).strip() or prompt
         status.update(label=f"Running 5 parallel web searches on “{topic[:50]}”…")
-        prepared = tools.research._prepare_research(topic, with_history(user_content))
+        prepared = tools.research._prepare_research(
+            topic, with_history(prompt), source_context=attached_context
+        )
         status.update(label="Writing the briefing…")
         return tools.research.iter_prepared(prepared), meta
 
@@ -171,16 +173,22 @@ def respond(prompt, user_content, image_note, status):
         language = pick_language(prompt)
         fenced = re.search(r"```(?:\w+)?\n(.*?)```", user_content, re.DOTALL)
         status.update(label="Reviewing your code…")
-        return tools.code.iter_check_code(fenced.group(1) if fenced else user_content, language), meta
+        return tools.code.iter_check_code(
+            fenced.group(1) if fenced else user_content, language, context=attached_context
+        ), meta
 
     if intent == "code_generate":
         status.update(label="Writing code…")
-        return tools.code.iter_generate_code(with_history(user_content), pick_language(prompt)), meta
+        return tools.code.iter_generate_code(
+            with_history(prompt), pick_language(prompt), context=attached_context
+        ), meta
 
     # Default: LangGraph Self-RAG tutor.
     query = prompt if not (image_note and len(prompt.split()) < 6) else f"{prompt}\n{image_note[:400]}"
     tools.self_rag.on_step = lambda label: status.update(label=f"{label}…")
-    answer = "".join(tools.self_rag.iter_answer(query, user_content, history_for_model()))
+    answer = "".join(tools.self_rag.iter_answer(
+        query, prompt, history_for_model(), user_context=attached_context
+    ))
     tools.self_rag.on_step = None
     return answer, meta
 
@@ -230,7 +238,7 @@ with st.chat_message("user", avatar=":material/person:"):
 
 started = time.perf_counter()
 with st.chat_message("assistant", avatar=":material/school:"):
-    user_content, notes = prompt, []
+    user_content, notes, attachment_context = prompt, [], []
     per_file = max(1500, ATTACHMENT_CHARS // max(1, len(uploads)))
     try:
         with st.status("Thinking…", expanded=False) as status:
@@ -240,9 +248,14 @@ with st.chat_message("assistant", avatar=":material/school:"):
                 user_record["attachments"].append(path)
                 if note:
                     notes.append(note)
-                user_content += extra
+                if extra:
+                    attachment_context.append(extra)
+            attached_context = "\n\n".join(attachment_context)
+            user_content += attached_context
             user_record["model_content"] = user_content
-            result, meta = respond(prompt, user_content, "\n".join(notes), status)
+            result, meta = respond(
+                prompt, prompt, "\n".join(notes), status, attached_context
+            )
             status.update(label="Done", state="complete")
         if isinstance(result, str):
             st.markdown(result)

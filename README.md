@@ -31,6 +31,13 @@ streamlit run app.py
 
 Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`), turn on web search inside Self-RAG (`SELF_RAG_WEB=1`), or pick a separate judge model for evals (`EVAL_JUDGE_MODEL`).
 
+Generated text, including streamed answers and image descriptions, is screened by a
+separate Groq moderation model before it is shown. The default is
+`meta-llama/llama-guard-4-12b`; set `GROQ_MODERATION_MODEL` to override it. Unsafe,
+unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
+service/model failure also prevents generated answers from being displayed. This
+adds an API request and latency to each generated response.
+
 `DSBOT_MOCK=1 streamlit run app.py` starts the UI with an offline fake model (no key needed) for UI work.
 
 ---
@@ -104,6 +111,21 @@ evals/                  datasets/, suites.py, run_evals.py, mock_model.py, resul
 | vision | `GROQ_VISION_MODEL`, then `qwen/qwen3.8-27b`, then Llama 4 Scout/Maverick | image attachments |
 
 Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Self-RAG allows 1 revision by default.
+
+### Prompt-injection safeguards
+
+Model calls use a shared security policy that rejects attempts to reveal hidden
+instructions or secrets and treats uploaded files, retrieved notes, web snippets,
+images/OCR, code comments, and prior conversation as untrusted data. Source material
+and conversation history are sent separately from system instructions, serialized
+as JSON; the vision path applies the same policy. Generated content is independently
+screened for toxicity before it reaches the UI. The app does not expose model tools
+or execute code from prompts or source material.
+
+These are layered mitigations, not a mathematical guarantee: prompt injection and
+toxicity classification can both fail on edge cases. Do not put secrets in prompts
+or retrievable content, and do not grant the model privileged tools without adding
+independent authorization and output validation.
 
 ---
 

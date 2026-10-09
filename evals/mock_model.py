@@ -26,25 +26,25 @@ class MockModel:
             return "Here is what the notes say:\n\n" + body[:900]
         return "I don't have access to that information, so I cannot know it. " + prompt[:200]
 
-    def generate(self, prompt, model_type="reasoning", temperature=0.7):
-        return self.answer(prompt, model_type=model_type)
+    def generate(self, prompt, model_type="reasoning", temperature=0.7, context=""):
+        return self.answer(prompt, context=context, model_type=model_type)
 
     def stream_answer(self, prompt, history=None, context="", model_type="reasoning", temperature=0.5, max_tokens=4096):
         text = self.answer(prompt, history, context, model_type)
         for i in range(0, len(text), 40):
             yield text[i:i + 40]
 
-    def stream_code(self, prompt, language="python"):
+    def stream_code(self, prompt, language="python", context=""):
         name = re.search(r"`(\w+)\(", prompt)
         fn = name.group(1) if name else "solution"
         yield f"Plan: stub.\n\n```python\ndef {fn}(*args, **kwargs):\n    raise NotImplementedError\n```\n"
 
-    def complete_json(self, prompt, schema, name="result", model_type="reasoning", temperature=0.2, max_tokens=4096):
+    def complete_json(self, prompt, schema, name="result", model_type="reasoning", temperature=0.2, max_tokens=4096, context=""):
         self.calls.append({"model": model_type, "latency_s": 0.0})
         if name == "selfrag_reflection":
             return {"claims": [], "useful": "medium", "missing": []}
         if name == "interview_grade":
-            words = len(re.findall(r"\w+", prompt.split("<answer>")[-1]))
+            words = len(re.findall(r"\w+", context or prompt))
             score = 2 if words < 15 else 6 if words < 40 else 8
             return {"score": score, "strengths": ["s"], "improvements": ["i"], "model_answer": "m", "feedback": "f"}
         if name == "interview_questions":
