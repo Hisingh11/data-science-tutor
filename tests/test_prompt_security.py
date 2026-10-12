@@ -56,6 +56,7 @@ def _model_manager():
     manager.moderation_model = "mock-moderator"
     manager.api_key = "gsk_" + "A" * 48
     manager._extras_supported = False
+    manager._provider = "groq"
     manager.calls = []
     return manager
 
