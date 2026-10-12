@@ -4,11 +4,7 @@ import os
 from utils.model_manager import (
     INJECTION_RESISTANCE_PROMPT,
     LEAKAGE_BLOCKED_MESSAGE,
-    SAFETY_BLOCKED_MESSAGE,
-    SAFETY_MODEL,
-    SAFETY_UNAVAILABLE_MESSAGE,
     ModelManager,
-    check_output_toxicity,
     contains_protected_content,
     get_groq_api_key,
 )
@@ -46,7 +42,6 @@ def _mime_type(image_path):
 
 def _get_vision_client():
     """Get a Groq client for vision tasks. Tries ModelManager first, then direct Groq."""
-    # Try ModelManager first (may already have Groq client initialized for vision)
     try:
         mm = ModelManager()
         if mm.ready and mm.provider == "groq":
@@ -54,7 +49,6 @@ def _get_vision_client():
     except Exception:
         pass
 
-    # Fallback to direct Groq client
     api_key = get_groq_api_key()
     if api_key and Groq is not None:
         return Groq(api_key=api_key)
@@ -101,19 +95,6 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
                 text, (get_groq_api_key(), INJECTION_RESISTANCE_PROMPT, system_prompt)
             ):
                 return LEAKAGE_BLOCKED_MESSAGE
-            screened = check_output_toxicity(
-                text,
-                lambda messages: client.chat.completions.create(
-                    model=SAFETY_MODEL,
-                    messages=messages,
-                    temperature=0,
-                    max_tokens=32,
-                ),
-            )
-            if screened is False:
-                return SAFETY_BLOCKED_MESSAGE
-            if screened is None:
-                return SAFETY_UNAVAILABLE_MESSAGE
             return text
         except Exception as exc:
             last_error = str(exc)

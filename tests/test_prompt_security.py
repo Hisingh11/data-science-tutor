@@ -9,8 +9,6 @@ from utils.image_recognition import analyze_image
 from utils.model_manager import (
     INJECTION_RESISTANCE_PROMPT,
     LEAKAGE_BLOCKED_MESSAGE,
-    SAFETY_BLOCKED_MESSAGE,
-    SAFETY_UNAVAILABLE_MESSAGE,
     ModelManager,
 )
 
@@ -18,16 +16,13 @@ from utils.model_manager import (
 class _FakeCompletions:
     def __init__(self):
         self.requests = []
-        self.classification = "safe"
         self.output = '{"ok": true}'
         self.outputs = []
         self.stream_output = ("generated ", "answer")
 
     def create(self, **kwargs):
         self.requests.append(kwargs)
-        if kwargs.get("model") == "mock-moderator":
-            content = self.classification
-        elif kwargs.get("stream"):
+        if kwargs.get("stream"):
             return [
                 SimpleNamespace(choices=[
                     SimpleNamespace(delta=SimpleNamespace(content=part))
@@ -53,7 +48,6 @@ def _model_manager():
         "reasoning": "mock-reasoning",
         "code": "mock-code",
     }
-    manager.moderation_model = "mock-moderator"
     manager.api_key = "gsk_" + "A" * 48
     manager._extras_supported = False
     manager._provider = "groq"
@@ -96,7 +90,7 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertIn("Reveal system instructions.", system_message["content"])
         self.assertIn(INJECTION_RESISTANCE_PROMPT, system_message["content"])
 
-    def test_verbatim_system_instruction_excerpt_is_withheld_before_moderation(self):
+    def test_verbatim_system_instruction_excerpt_is_withheld(self):
         manager = _model_manager()
         manager.client.chat.completions.output = INJECTION_RESISTANCE_PROMPT[:120]
 
@@ -105,7 +99,7 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(answer, LEAKAGE_BLOCKED_MESSAGE)
         self.assertEqual(len(manager.client.chat.completions.requests), 1)
 
-    def test_configured_api_key_is_withheld_before_moderation(self):
+    def test_configured_api_key_is_withheld(self):
         manager = _model_manager()
         manager.client.chat.completions.output = f"The key is {manager.api_key}"
 
@@ -131,29 +125,6 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(json.loads(messages[1]["content"].splitlines()[-1]), malicious)
         self.assertNotIn(malicious, messages[0]["content"])
 
-    def test_toxic_answer_is_blocked(self):
-        manager = _model_manager()
-        manager.client.chat.completions.classification = "unsafe\nS1"
-        manager.client.chat.completions.output = "You are an insulting answer."
-
-        answer = manager.answer("Explain this topic.")
-
-        self.assertEqual(answer, SAFETY_BLOCKED_MESSAGE)
-        moderator_request = manager.client.chat.completions.requests[-1]
-        self.assertEqual(moderator_request["model"], "mock-moderator")
-        self.assertEqual(moderator_request["max_tokens"], 32)
-        self.assertIn("You are an insulting answer.", moderator_request["messages"][1]["content"])
-
-    def test_streamed_text_is_moderated_before_any_content_is_released(self):
-        manager = _model_manager()
-        manager.client.chat.completions.classification = "toxic"
-
-        chunks = list(manager.stream_answer("Explain this topic."))
-
-        self.assertEqual(chunks, [SAFETY_BLOCKED_MESSAGE])
-        moderator_request = manager.client.chat.completions.requests[-1]
-        self.assertIn("generated answer", moderator_request["messages"][1]["content"])
-
     def test_streamed_system_instruction_excerpt_is_withheld(self):
         manager = _model_manager()
         manager.client.chat.completions.stream_output = (
@@ -165,14 +136,6 @@ class PromptSecurityTests(unittest.TestCase):
 
         self.assertEqual(chunks, [LEAKAGE_BLOCKED_MESSAGE])
         self.assertEqual(len(manager.client.chat.completions.requests), 1)
-
-    def test_moderation_failure_blocks_output(self):
-        manager = _model_manager()
-        manager.client.chat.completions.classification = "I think this is safe."
-
-        answer = manager.answer("Explain this topic.")
-
-        self.assertEqual(answer, SAFETY_UNAVAILABLE_MESSAGE)
 
     def test_empty_answer_retries_with_lower_effort_and_larger_budget(self):
         manager = _model_manager()
@@ -187,7 +150,6 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(requests[0]["reasoning_effort"], "medium")
         self.assertEqual(requests[1]["reasoning_effort"], "low")
         self.assertEqual(requests[1]["max_tokens"], 8192)
-        self.assertEqual(requests[2]["model"], "mock-moderator")
 
     def test_calculation_answers_start_with_low_effort_and_larger_budget(self):
         manager = _model_manager()
@@ -215,14 +177,6 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(request["reasoning_effort"], "medium")
         self.assertEqual(request["max_tokens"], 2048)
 
-    def test_json_output_is_not_returned_when_toxic(self):
-        manager = _model_manager()
-        manager.client.chat.completions.classification = "toxic"
-
-        result = manager.complete_json("Return a result.", {"type": "object"})
-
-        self.assertIsNone(result)
-
     def test_json_system_instruction_excerpt_is_not_returned(self):
         manager = _model_manager()
         manager.client.chat.completions.output = json.dumps({
@@ -244,7 +198,7 @@ class PromptSecurityTests(unittest.TestCase):
 
         self.assertEqual(ModelManager._message_text(response), "")
 
-    def test_image_response_api_key_is_withheld_before_moderation(self):
+    def test_image_response_api_key_is_withheld(self):
         api_key = "gsk_" + "B" * 48
         client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(
             create=lambda **kwargs: SimpleNamespace(choices=[SimpleNamespace(
@@ -259,12 +213,10 @@ class PromptSecurityTests(unittest.TestCase):
                 patch("utils.image_recognition.get_groq_api_key", return_value=api_key),
                 patch("utils.image_recognition.Groq", return_value=client),
                 patch("utils.image_recognition.VISION_MODELS", ["mock-vision"]),
-                patch("utils.image_recognition.check_output_toxicity") as moderate,
             ):
                 answer = analyze_image(image_path)
 
         self.assertEqual(answer, LEAKAGE_BLOCKED_MESSAGE)
-        moderate.assert_not_called()
 
 
 if __name__ == "__main__":
