@@ -106,6 +106,7 @@ SAFETY_UNAVAILABLE_MESSAGE = (
 )
 DEFAULT_MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
 DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
+MAX_MODERATED_STREAM_BATCH_CHARS = 240
 
 
 def _configured_moderation_model() -> str:
@@ -119,6 +120,22 @@ def _configured_moderation_model() -> str:
         )
         return DEFAULT_MODERATION_MODEL
     return moderation_model
+
+
+def _next_moderated_stream_batch(buffered: str) -> Optional[int]:
+    """Return the next safe-to-moderate display boundary, if available."""
+    boundary = re.search(r"[.!?][\"')\]]*\s+|\n+", buffered)
+    if boundary:
+        return boundary.end()
+    if len(buffered) < MAX_MODERATED_STREAM_BATCH_CHARS:
+        return None
+    split_at = buffered.rfind(" ", 0, MAX_MODERATED_STREAM_BATCH_CHARS + 1)
+    if split_at <= 0:
+        split_at = MAX_MODERATED_STREAM_BATCH_CHARS
+    else:
+        split_at += 1
+    return split_at
+
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
                        "minItems", "maxItems", "exclusiveMinimum", "exclusiveMaximum"}
@@ -754,14 +771,11 @@ class ModelManager:
                     if text:
                         buffered += text
                         while True:
-                            boundary = re.search(
-                                r"[.!?][\"')\]]*\s+|\n+",
-                                buffered,
-                            )
-                            if boundary is None:
+                            batch_end = _next_moderated_stream_batch(buffered)
+                            if batch_end is None:
                                 break
-                            batch = buffered[:boundary.end()]
-                            buffered = buffered[boundary.end():]
+                            batch = buffered[:batch_end]
+                            buffered = buffered[batch_end:]
                             full_answer += batch
                             protected = self._screen_output(
                                 full_answer,

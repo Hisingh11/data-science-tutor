@@ -31,8 +31,9 @@ streamlit run app.py
 Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`). Tutor Chat automatically uses DuckDuckGo for explicit online-search requests and time-sensitive questions; set `SELF_RAG_WEB=0` to disable these lookups.
 
 User-visible generated text, including streamed answers and image descriptions, is screened by a
-separate Groq moderation model before it is shown. Tutor answers are released one completed
-sentence or paragraph at a time after that batch passes moderation. A valid `GROQ_API_KEY` is therefore
+separate Groq moderation model before it is shown. Tutor answers are released in
+moderated sentence/paragraph batches, with long passages flushed at 240 characters
+to keep streaming responsive. A valid `GROQ_API_KEY` is therefore
 required for the tutor and moderation.
 The default moderation model is `openai/gpt-oss-safeguard-20b`, Groq's recommended
 replacement for the decommissioned Llama Guard model. Set `GROQ_MODERATION_MODEL`

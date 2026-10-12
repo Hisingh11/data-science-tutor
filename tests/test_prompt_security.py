@@ -366,6 +366,29 @@ class PromptSecurityTests(unittest.TestCase):
         )
         self.assertEqual(list(answer), ["Still generating"])
 
+    def test_stream_answer_flushes_long_unpunctuated_output_in_bounded_batches(self):
+        manager = _model_manager()
+        completions = manager.client.chat.completions
+        completions.stream_output = (
+            "word " * 100,
+            "The remaining output.",
+        )
+
+        answer = manager.stream_answer("Explain streaming.")
+
+        first_batch = next(answer)
+        self.assertLessEqual(len(first_batch), 240)
+        self.assertEqual(completions.stream_consumed, ["word " * 100])
+        self.assertEqual(
+            len(manager.moderation_client.chat.completions.requests), 1
+        )
+        remaining = "".join(answer)
+        self.assertTrue(remaining)
+        self.assertEqual(
+            completions.stream_consumed,
+            ["word " * 100, "The remaining output."],
+        )
+
     def test_stream_answer_stops_after_a_toxic_sentence(self):
         manager = _model_manager()
         completions = manager.client.chat.completions
