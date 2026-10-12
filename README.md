@@ -86,12 +86,12 @@ evals/mock_model.py     offline fake model for local UI work
 
 | Role | Default | Used for |
 | --- | --- | --- |
-| `reasoning` | `openai/gpt-oss-120b` | tutor answers, interview, grading, research |
+| `reasoning` | `openai/gpt-oss-20b` | tutor answers, interview, grading, research |
 | `fast` | `openai/gpt-oss-20b` | structured checks and optional web-result grading |
 | `code` | `openai/gpt-oss-120b` | code generation and review |
 | vision | `GROQ_VISION_MODEL` (optional), then `qwen/qwen3.8-27b` | image attachments |
 
-Tutor Chat uses Groq only, with `openai/gpt-oss-120b` as the default answer model.
+Tutor Chat uses Groq only, with `openai/gpt-oss-20b` as the default answer model.
 Tutor answers use temperature 0.2 and a 4,096-token budget, and are generated in
 one model call after retrieval. Instructions favor complete, step-by-step
 explanations while prioritizing supported facts and admitting uncertainty. There is

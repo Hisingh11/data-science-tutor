@@ -71,6 +71,12 @@ class _ShortRateLimitError(Exception):
     response = SimpleNamespace(headers={})
 
 
+class _LongRateLimitError(Exception):
+    status_code = 429
+    body = {"error": {"message": "Rate limit exceeded."}}
+    response = SimpleNamespace(headers={"retry-after": "30"})
+
+
 def _model_manager():
     manager = ModelManager.__new__(ModelManager)
     manager.client = SimpleNamespace(
@@ -94,6 +100,20 @@ def _model_manager():
 
 
 class PromptSecurityTests(unittest.TestCase):
+    def test_default_models_use_groq_20b_for_tutor(self):
+        client = SimpleNamespace()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch("utils.model_manager.Groq", return_value=client),
+            patch("utils.model_manager.get_groq_api_key", return_value="groq-key"),
+        ):
+            manager = ModelManager()
+
+        self.assertEqual(manager.provider, "groq")
+        self.assertEqual(manager.models["reasoning"], "openai/gpt-oss-20b")
+        self.assertEqual(manager.models["fast"], "openai/gpt-oss-20b")
+        self.assertEqual(manager.models["code"], "openai/gpt-oss-120b")
+
     def test_system_prompt_prefers_evidence_and_admits_uncertainty(self):
         manager = _model_manager()
 
@@ -263,45 +283,66 @@ class PromptSecurityTests(unittest.TestCase):
         manager = _model_manager()
         manager.client.chat.completions.rate_limited_models.add("mock-reasoning")
 
-        answer = manager.answer("Explain bias and variance.")
+        with patch("utils.model_manager.time.sleep") as sleep:
+            answer = manager.answer("Explain bias and variance.")
 
         requests = manager.client.chat.completions.requests
         self.assertEqual(answer, '{"ok": true}')
         self.assertEqual([request["model"] for request in requests],
-                         ["mock-reasoning", "mock-fast"])
+                         ["mock-reasoning", "mock-reasoning", "mock-fast"])
+        sleep.assert_called_once_with(30.0)
 
     def test_rate_limited_stream_retries_once_on_fast_model(self):
         manager = _model_manager()
         manager.client.chat.completions.rate_limited_models.add("mock-reasoning")
 
-        answer = "".join(manager.stream_answer("Explain bias and variance."))
+        with patch("utils.model_manager.time.sleep") as sleep:
+            answer = "".join(manager.stream_answer("Explain bias and variance."))
 
         requests = manager.client.chat.completions.requests
         self.assertEqual(answer, "generated answer")
         self.assertEqual([request["model"] for request in requests],
-                         ["mock-reasoning", "mock-fast"])
+                         ["mock-reasoning", "mock-reasoning", "mock-fast"])
+        sleep.assert_called_once_with(30.0)
 
     def test_structured_rate_limit_falls_back_to_fast_model(self):
         manager = _model_manager()
         manager.client.chat.completions.rate_limited_models.add("mock-reasoning")
 
-        result = manager.complete_json("Return a result.", {"type": "object"})
+        with patch("utils.model_manager.time.sleep") as sleep:
+            result = manager.complete_json("Return a result.", {"type": "object"})
 
         requests = manager.client.chat.completions.requests
         self.assertEqual(result, {"ok": True})
         self.assertEqual([request["model"] for request in requests],
-                         ["mock-reasoning", "mock-fast"])
+                         ["mock-reasoning", "mock-reasoning", "mock-fast"])
+        sleep.assert_called_once_with(30.0)
 
     def test_rate_limit_error_includes_provider_reset_hint(self):
         manager = _model_manager()
         manager.models["fast"] = "mock-reasoning"
         manager.client.chat.completions.rate_limited_models.add("mock-reasoning")
 
-        answer = manager.answer("Explain bias and variance.")
+        with patch("utils.model_manager.time.sleep") as sleep:
+            answer = manager.answer("Explain bias and variance.")
 
         self.assertIn("Retry after 30 seconds", answer)
         self.assertIn("Per-model request limit reached", answer)
-        self.assertEqual(len(manager.client.chat.completions.requests), 1)
+        self.assertEqual(len(manager.client.chat.completions.requests), 2)
+        sleep.assert_called_once_with(30.0)
+
+    def test_long_provider_reset_hint_is_retried_once(self):
+        manager = _model_manager()
+        completions = manager.client.chat.completions
+        completions.rate_limit_attempts["mock-reasoning"] = 1
+        completions.rate_limit_exception = _LongRateLimitError
+
+        with patch("utils.model_manager.time.sleep") as sleep:
+            answer = manager.answer("Explain bias and variance.")
+
+        self.assertEqual(answer, '{"ok": true}')
+        self.assertEqual(len(completions.requests), 2)
+        sleep.assert_called_once_with(30.0)
 
     def test_short_tpm_limit_wait_is_retried_once(self):
         manager = _model_manager()

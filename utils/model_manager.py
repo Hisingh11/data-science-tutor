@@ -262,7 +262,7 @@ class ModelManager:
 
         self.models = {
             "fast": os.getenv("GROQ_FAST_MODEL", "openai/gpt-oss-20b"),
-            "reasoning": os.getenv("GROQ_REASONING_MODEL", "openai/gpt-oss-120b"),
+            "reasoning": os.getenv("GROQ_REASONING_MODEL", "openai/gpt-oss-20b"),
             "code": os.getenv("GROQ_CODE_MODEL", "openai/gpt-oss-120b"),
         }
         self._extras_supported = True
@@ -406,7 +406,7 @@ class ModelManager:
                 r"try again in\s+(\d+(?:\.\d+)?)\s*s", error_text, re.IGNORECASE
             )
             delay = float(match.group(1)) if match else None
-        return delay if delay is not None and 0 < delay <= 20 else None
+        return delay if delay is not None and 0 < delay <= 60 else None
 
     @staticmethod
     def _rate_limit_error_text(exc) -> str:
