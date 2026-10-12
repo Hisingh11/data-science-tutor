@@ -8,59 +8,35 @@ class _EmptyRag:
         return []
 
 
-class _CalculationReviewModel:
+class _DirectAnswerModel:
     def __init__(self):
-        self.answers = []
-        self.reviews = 0
-        self.review_contexts = []
+        self.answer_calls = []
 
     def answer(self, prompt, **kwargs):
-        self.answers.append(prompt)
-        if len(self.answers) == 1:
-            return "Initial draft with an inconsistent total. " + ("detail " * 400) + "DRAFT_END_SENTINEL"
-        return "Corrected calculation."
+        self.answer_calls.append((prompt, kwargs))
+        return "The direct tutor answer."
 
-    def complete_json(self, prompt, schema, name, *args, **kwargs):
-        self.reviews += 1
-        self.review_prompt = prompt
-        self.review_schema = schema
-        self.review_contexts.append(kwargs["context"])
-        if self.reviews == 1:
-            return {
-                "claims": [],
-                "useful": "high",
-                "missing": [],
-                "calculation_errors": ["The closing balance does not reconcile with deposits and gain."],
-            }
-        return {
-            "claims": [],
-            "useful": "high",
-            "missing": [],
-            "calculation_errors": [],
-        }
+    def complete_json(self, *args, **kwargs):
+        raise AssertionError("Tutor responses must not make a self-check model call.")
 
 
-class SelfRAGCalculationTests(unittest.TestCase):
-    def test_calculation_review_error_triggers_corrective_retry(self):
-        model = _CalculationReviewModel()
+class SelfRAGDirectAnswerTests(unittest.TestCase):
+    def test_tutor_generates_once_without_reflection_or_retry(self):
+        model = _DirectAnswerModel()
         engine = SelfRAGEngine(_EmptyRag(), model)
 
         answer = engine.run(
             "Calculate the total investment and gain.",
             "Calculate the total investment and gain.",
+            history=[],
         )
 
-        self.assertEqual(answer, "Corrected calculation.")
-        self.assertEqual(len(model.answers), 2)
-        self.assertIn("Calculation errors:", model.answers[1])
-        self.assertIn("Recalculate numeric results", model.answers[1])
-        self.assertIn("DRAFT_END_SENTINEL", model.answers[1])
-        self.assertIn("DRAFT_END_SENTINEL", model.review_contexts[0])
-        self.assertIn("Complete draft answer", model.review_contexts[0])
-        self.assertIn("calculation_errors", model.review_schema["required"])
-        self.assertIn("independently audit", model.review_prompt)
-        self.assertEqual(engine.last_log["retries_used"], 1)
-        self.assertEqual(engine.last_log["calculation_errors"], [])
+        self.assertEqual(answer, "The direct tutor answer.")
+        self.assertEqual(len(model.answer_calls), 1)
+        self.assertEqual(model.answer_calls[0][1]["max_tokens"], 4096)
+        self.assertEqual(model.answer_calls[0][1]["temperature"], 0.2)
+        self.assertIn("Answer completely and at useful depth", model.answer_calls[0][0])
+        self.assertEqual(engine.last_log["retrieved"], [])
 
 
 if __name__ == "__main__":

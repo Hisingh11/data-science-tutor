@@ -29,9 +29,6 @@ pages = {
         st.Page("views/interview.py", title="Mock Interview", icon=":material/record_voice_over:"),
         st.Page("views/assignments.py", title="Assignments", icon=":material/assignment:"),
     ],
-    "Quality": [
-        st.Page("views/evals.py", title="LLM Evals", icon=":material/monitoring:"),
-    ],
 }
 nav = st.navigation(pages, position="sidebar")
 

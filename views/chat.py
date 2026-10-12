@@ -8,7 +8,6 @@ import streamlit as st
 
 from ui.state import core, log_feedback, save_upload, stream_into
 from ui.theme import badge, hero
-from utils.calculation_engine import is_calculation_request, monte_carlo_report
 from utils.image_recognition import analyze_image
 from utils.model_manager import trim_history
 from utils.router import (ASSIGNMENT_TOPICS, INTERVIEW_TOPICS, classify_intent, pick_difficulty,
@@ -70,22 +69,13 @@ def read_upload(uploaded, limit):
 
 
 def render_meta(msg):
-    log = msg.get("self_rag_log")
     meta = msg.get("meta") or {}
     chips = []
     if meta.get("intent") and meta["intent"] != "tutor":
         chips.append(badge(meta["intent"].replace("_", " "), "brand"))
-    if isinstance(log, dict):
-        support = str(log.get("support", "not checked"))
-        kind = "ok" if support == "claims grounded" else "warn" if "unsupported" in support else "neutral"
-        chips.append(badge(f"Grounding: {support}", kind))
-        useful = str(log.get("usefulness", "not checked"))
-        chips.append(badge(f"Usefulness: {useful}", "ok" if useful.startswith("high") else "neutral"))
-        if log.get("revised"):
-            chips.append(badge("Self-corrected", "brand"))
-        notes = [item.get("topic", "note") for item in (log.get("retrieved") or [])]
-        if notes:
-            chips.append(badge(f"{len(notes)} note(s): " + ", ".join(notes[:3]), "neutral"))
+    notes = [item.get("topic", "note") for item in (meta.get("retrieved") or [])]
+    if notes:
+        chips.append(badge(f"{len(notes)} note(s): " + ", ".join(notes[:3]), "neutral"))
     if meta.get("seconds"):
         chips.append(badge(f"{meta['seconds']:.1f}s", "neutral"))
     if chips:
@@ -118,7 +108,7 @@ def render_messages():
 def render_empty():
     hero("What do you want to learn today?",
          "Ask any data science, statistics, ML, GenAI or Python question. Answers are grounded in "
-         "a curated knowledge base and self-checked before you see them.",
+         "a curated knowledge base.",
          icon="🎓", eyebrow="Tutor chat")
     box = st.container(key="suggestions")
     cols = box.columns(3)
@@ -184,24 +174,14 @@ def respond(prompt, user_content, image_note, status, attached_context=""):
             with_history(prompt), pick_language(prompt), context=attached_context
         ), meta
 
-    if intent == "tutor" and is_calculation_request(prompt):
-        status.update(label="Building a probabilistic calculation plan…")
-        result = monte_carlo_report(
-            prompt,
-            tools.model,
-            context=attached_context,
-            history=history_for_model(),
-        )
-        meta["intent"] = "monte_carlo"
-        return result, meta
-
-    # Default: LangGraph Self-RAG tutor.
+    # Default: retrieve relevant notes, then answer directly with the tutor model.
     query = prompt if not (image_note and len(prompt.split()) < 6) else f"{prompt}\n{image_note[:400]}"
     tools.self_rag.on_step = lambda label: status.update(label=f"{label}…")
     answer = "".join(tools.self_rag.iter_answer(
         query, prompt, history_for_model(), user_context=attached_context
     ))
     tools.self_rag.on_step = None
+    meta["retrieved"] = tools.self_rag.last_log.get("retrieved", [])
     return answer, meta
 
 
@@ -284,8 +264,5 @@ with st.chat_message("assistant", avatar=":material/school:"):
 
 meta["seconds"] = time.perf_counter() - started
 assistant = {"role": "assistant", "content": reply, "model_content": reply, "attachments": [], "meta": meta}
-if meta.get("intent") == "tutor" and tools.self_rag.last_log:
-    assistant["self_rag_log"] = tools.self_rag.last_log
-tools.self_rag.last_log = None
 messages.extend([user_record, assistant])
 st.rerun()

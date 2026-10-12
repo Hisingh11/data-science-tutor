@@ -8,7 +8,7 @@ Examples (from the project root):
   python -m evals.run_evals --mock                    # harness smoke test, fake model
 
 Results land in evals/results/latest.json and evals/results/latest_report.md,
-plus a timestamped copy. The LLM Evals page in the app reads latest.json.
+plus a timestamped copy.
 """
 
 import argparse

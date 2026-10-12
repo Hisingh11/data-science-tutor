@@ -9,7 +9,10 @@ STOPWORDS = {
     "at", "by", "about", "into", "than", "then", "can", "could", "would", "should",
     "do", "does", "did", "me", "my", "we", "our", "you", "your", "please", "explain",
     "tell", "give", "difference", "between", "versus", "vs", "using", "use", "used",
+    "but", "per", "report", "rate", "effective", "fix", "best", "money",
 }
+
+GENERIC_OVERLAP_TERMS = {"assumption", "before", "fix", "show", "value", "valu"}
 
 EXPANSIONS = {
     "rag": ["retrieval", "augmented", "generation"],
@@ -42,6 +45,7 @@ EXPANSIONS = {
     "sql": ["query", "join", "select"],
     "arima": ["time", "series", "autoregression"],
     "imputation": ["missing", "impute"],
+    "impute": ["imputation", "missing"],
     "evals": ["evaluating", "faithfulness", "judge"],
     "gil": ["global", "interpreter", "lock"],
 }
@@ -266,7 +270,10 @@ class RAGEngine:
     def relevant(self, query: str, n_results: int = 5) -> List[Dict]:
         """Search, then keep only notes that clear the relevance thresholds."""
         hits = self.search(query, n_results=n_results, min_score=MIN_SCORE)
-        return [hit for hit in hits if hit["relevance"] >= MIN_RELATIVE]
+        return [
+            hit for hit in hits
+            if hit["relevance"] >= MIN_RELATIVE and self._anchored(query, hit["text"])
+        ]
 
     def _clean_query(self, query: str) -> str:
         text = query or ""
@@ -297,9 +304,9 @@ class RAGEngine:
         return original + original + extra
 
     def _anchored(self, query: str, text: str) -> bool:
-        needles = set(self._tokens(query))
+        needles = set(self._query_tokens(self._clean_query(query))) - GENERIC_OVERLAP_TERMS
         haystack = set(self._doc_tokens(text))
-        return len(needles & haystack) >= 1
+        return bool(needles & haystack)
 
 
 class BM25Index:
