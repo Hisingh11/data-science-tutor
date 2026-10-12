@@ -30,10 +30,16 @@ class _EmptyRag:
 class _DirectAnswerModel:
     def __init__(self):
         self.answer_calls = []
+        self.stream_calls = []
 
     def answer(self, prompt, **kwargs):
         self.answer_calls.append((prompt, kwargs))
         return "The direct tutor answer."
+
+    def stream_answer(self, prompt, **kwargs):
+        self.stream_calls.append((prompt, kwargs))
+        yield "The direct "
+        yield "tutor answer."
 
     def complete_json(self, *args, **kwargs):
         raise AssertionError("Tutor responses must not make a self-check model call.")
@@ -52,10 +58,11 @@ class SelfRAGDirectAnswerTests(unittest.TestCase):
         )
 
         self.assertEqual(answer, "The direct tutor answer.")
-        self.assertEqual(len(model.answer_calls), 1)
-        self.assertEqual(model.answer_calls[0][1]["max_tokens"], 4096)
-        self.assertEqual(model.answer_calls[0][1]["temperature"], 0.2)
-        self.assertIn("Answer completely and at useful depth", model.answer_calls[0][0])
+        self.assertEqual(model.answer_calls, [])
+        self.assertEqual(len(model.stream_calls), 1)
+        self.assertEqual(model.stream_calls[0][1]["max_tokens"], 4096)
+        self.assertEqual(model.stream_calls[0][1]["temperature"], 0.2)
+        self.assertIn("Answer completely and at useful depth", model.stream_calls[0][0])
         self.assertEqual(engine.last_log["retrieved"], [])
         self.assertEqual(rag.web_search_calls, [])
 
@@ -76,9 +83,10 @@ class SelfRAGDirectAnswerTests(unittest.TestCase):
             rag.web_search_calls,
             [("Search online for the latest pandas release.", 5)],
         )
-        self.assertEqual(len(model.answer_calls), 1)
+        self.assertEqual(model.answer_calls, [])
+        self.assertEqual(len(model.stream_calls), 1)
         self.assertIn(
-            "https://example.com/pandas", model.answer_calls[0][1]["context"]
+            "https://example.com/pandas", model.stream_calls[0][1]["context"]
         )
         self.assertEqual(
             engine.last_log["retrieved"],
@@ -88,7 +96,7 @@ class SelfRAGDirectAnswerTests(unittest.TestCase):
                 "href": "https://example.com/pandas",
             }],
         )
-        self.assertIn("cite provided URLs", model.answer_calls[0][1]["context"])
+        self.assertIn("cite provided URLs", model.stream_calls[0][1]["context"])
 
     def test_time_sensitive_question_uses_duckduckgo(self):
         rag = _EmptyRag()

@@ -10,7 +10,7 @@ Made by **Himanshu**.
 
 | Page | What it does |
 | --- | --- |
-| **Tutor Chat** | Ask anything. Answers are grounded in a curated 30-note knowledge base (BM25) and generated in one tutor-model call. Attach images, PDFs, code or CSVs. Responses show the intent, notes used and latency, plus 👍/👎 feedback. Typing `Research …`, `Fact-check: …`, or pasting code still works inline. |
+| **Tutor Chat** | Ask anything. Answers are grounded in a curated 30-note knowledge base (BM25) and streamed as they are generated. Attach images, PDFs, code or CSVs. Responses show the intent, notes used and latency, plus 👍/👎 feedback. Typing `Research …`, `Fact-check: …`, or pasting code still works inline. |
 | **Research & Fact-check** | Deep research runs 5 parallel DuckDuckGo searches and writes a cited briefing (downloadable as Markdown). Fact-check returns a verdict, confidence and evidence links. |
 | **Code Lab** | Generate Python/SQL/R from a spec, or paste code for a bug-hunting review with a corrected version. |
 | **Mock Interview** | Pick a track and difficulty; get 5 fresh questions, rubric scoring 0–10, strengths/gaps, a model answer each time and a final report with a chart. |
@@ -31,7 +31,8 @@ streamlit run app.py
 Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`). Tutor Chat automatically uses DuckDuckGo for explicit online-search requests and time-sensitive questions; set `SELF_RAG_WEB=0` to disable these lookups.
 
 User-visible generated text, including streamed answers and image descriptions, is screened by a
-separate Groq moderation model before it is shown. A valid `GROQ_API_KEY` is therefore
+separate Groq moderation model before it is shown. Tutor answers are released one completed
+sentence or paragraph at a time after that batch passes moderation. A valid `GROQ_API_KEY` is therefore
 required for the tutor and moderation.
 The default moderation model is `openai/gpt-oss-safeguard-20b`, Groq's recommended
 replacement for the decommissioned Llama Guard model. Set `GROQ_MODERATION_MODEL`
@@ -94,7 +95,7 @@ evals/mock_model.py     offline fake model for local UI work
 
 Tutor Chat uses Groq only, with `openai/gpt-oss-20b` as the default answer model.
 Tutor answers use temperature 0.2 and a 4,096-token budget, and are generated in
-one model call after retrieval. Instructions favor complete, step-by-step
+one streaming model call after retrieval. Instructions favor complete, step-by-step
 explanations while prioritizing supported facts and admitting uncertainty. There is
 no per-answer LLM reviewer or automatic quality retry. Numeric questions use the
 same tutor-model path. The standalone fixed-deposit helper uses monthly

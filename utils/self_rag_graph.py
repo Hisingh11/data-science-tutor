@@ -66,7 +66,6 @@ class SelfRAGEngine:
         workflow.add_node("retrieve", self._retrieve)
         workflow.add_node("grade_documents", self._grade_documents)
         workflow.add_node("combine_context", self._combine_context)
-        workflow.add_node("generate", self._generate)
 
         workflow.add_node("web_search", self._web_search)
         workflow.add_node("filter_web", self._filter_web_results)
@@ -79,9 +78,7 @@ class SelfRAGEngine:
         workflow.add_edge("web_search", "grade_documents")
         workflow.add_edge("grade_documents", "filter_web")
         workflow.add_edge("filter_web", "combine_context")
-
-        workflow.add_edge("combine_context", "generate")
-        workflow.add_edge("generate", END)
+        workflow.add_edge("combine_context", END)
         return workflow.compile()
 
     @staticmethod
@@ -127,14 +124,28 @@ class SelfRAGEngine:
             "answer": "",
         }
         result = self.graph.invoke(state, config={"recursion_limit": 32})
-        answer = result.get("answer", "")
         self.last_context = result.get("context", "")
         self.last_log = {
             "retrieved": result.get("retrieved", []),
             "web": result.get("web", 0),
         }
-        if answer:
-            yield from self._chunks(answer)
+        if self._cancelled(state):
+            return
+        self._step("Writing the answer")
+        prompt = (
+            f"{user_content}\n\n"
+            "Answer completely and at useful depth. For explanations, show the steps "
+            "and include a worked example, assumptions, or caveats when helpful. "
+            "Avoid repetition, but do not omit requested details. Keep simple questions concise."
+        )
+        yield from self.model.stream_answer(
+            prompt,
+            history=history,
+            context=self.last_context,
+            model_type="reasoning",
+            temperature=ANSWER_TEMPERATURE,
+            max_tokens=4096,
+        )
 
     def _retrieve(self, state: SelfRAGState) -> SelfRAGState:
         if self._cancelled(state):
@@ -224,32 +235,7 @@ class SelfRAGEngine:
         state["context"] = "\n\n".join(parts)
         return state
 
-    def _generate(self, state: SelfRAGState) -> SelfRAGState:
-        if self._cancelled(state):
-            return state
-        self._step("Writing the answer")
-        prompt = (
-            f"{state['user_content']}\n\n"
-            "Answer completely and at useful depth. For explanations, show the steps "
-            "and include a worked example, assumptions, or caveats when helpful. "
-            "Avoid repetition, but do not omit requested details. Keep simple questions concise."
-        )
-        state["answer"] = self.model.answer(
-            prompt,
-            history=state.get("history"),
-            context=state.get("context", ""),
-            model_type="reasoning",
-            temperature=ANSWER_TEMPERATURE,
-            max_tokens=4096,
-        )
-        return state
-
     @staticmethod
     def _cancelled(state: SelfRAGState) -> bool:
         cancel = state.get("cancel")
         return bool(cancel is not None and cancel.is_set())
-
-    @staticmethod
-    def _chunks(text: str, step: int = 48):
-        for start in range(0, len(text), step):
-            yield text[start:start + step]

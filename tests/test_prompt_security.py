@@ -22,7 +22,9 @@ class _FakeCompletions:
         self.output = '{"ok": true}'
         self.outputs = []
         self.moderation_output = "SAFE"
+        self.moderation_outputs = []
         self.stream_output = ("generated ", "answer")
+        self.stream_consumed = []
         self.rate_limited_models = set()
         self.rate_limit_attempts = {}
         self.decommissioned_models = set()
@@ -42,15 +44,21 @@ class _FakeCompletions:
                 self.rate_limit_attempts[model] = remaining - 1
             raise self.rate_limit_exception("Error code: 429 rate_limit_exceeded")
         if kwargs.get("stream"):
-            return [
-                SimpleNamespace(choices=[
-                    SimpleNamespace(delta=SimpleNamespace(content=part))
-                ])
-                for part in self.stream_output
-            ]
+            def stream_chunks():
+                for part in self.stream_output:
+                    self.stream_consumed.append(part)
+                    yield SimpleNamespace(choices=[
+                        SimpleNamespace(delta=SimpleNamespace(content=part))
+                    ])
+
+            return stream_chunks()
         else:
             if kwargs["messages"][0]["content"] == OUTPUT_SAFETY_PROMPT:
-                content = self.moderation_output
+                content = (
+                    self.moderation_outputs.pop(0)
+                    if self.moderation_outputs
+                    else self.moderation_output
+                )
             else:
                 content = self.outputs.pop(0) if self.outputs else self.output
         message = SimpleNamespace(content=content)
@@ -332,6 +340,47 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual([request["model"] for request in requests],
                          ["mock-reasoning", "mock-reasoning", "mock-fast"])
         sleep.assert_called_once_with(30.0)
+
+    def test_stream_answer_releases_moderated_sentences_before_stream_finishes(self):
+        manager = _model_manager()
+        completions = manager.client.chat.completions
+        completions.stream_output = (
+            "First sentence. ",
+            "Second sentence. ",
+            "Still generating",
+        )
+
+        answer = manager.stream_answer("Explain streaming.")
+
+        self.assertEqual(next(answer), "First sentence. ")
+        self.assertEqual(completions.stream_consumed, ["First sentence. "])
+        self.assertEqual(
+            len(manager.moderation_client.chat.completions.requests), 1
+        )
+        self.assertEqual(
+            next(answer), "Second sentence. "
+        )
+        self.assertEqual(
+            completions.stream_consumed,
+            ["First sentence. ", "Second sentence. "],
+        )
+        self.assertEqual(list(answer), ["Still generating"])
+
+    def test_stream_answer_stops_after_a_toxic_sentence(self):
+        manager = _model_manager()
+        completions = manager.client.chat.completions
+        completions.stream_output = ("Safe sentence. ", "Next sentence. ")
+        manager.moderation_client.chat.completions.moderation_outputs = [
+            "SAFE",
+            "TOXIC",
+        ]
+
+        streamed = list(manager.stream_answer("Explain streaming."))
+
+        self.assertEqual(streamed, ["Safe sentence. ", SAFETY_BLOCKED_MESSAGE])
+        self.assertEqual(
+            completions.stream_consumed, ["Safe sentence. ", "Next sentence. "]
+        )
 
     def test_structured_rate_limit_falls_back_to_fast_model(self):
         manager = _model_manager()

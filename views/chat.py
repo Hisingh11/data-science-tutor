@@ -177,12 +177,19 @@ def respond(prompt, user_content, image_note, status, attached_context=""):
     # Default: retrieve relevant notes, then answer directly with the tutor model.
     query = prompt if not (image_note and len(prompt.split()) < 6) else f"{prompt}\n{image_note[:400]}"
     tools.self_rag.on_step = lambda label: status.update(label=f"{label}…")
-    answer = "".join(tools.self_rag.iter_answer(
-        query, prompt, history_for_model(), user_context=attached_context
-    ))
-    tools.self_rag.on_step = None
-    meta["retrieved"] = tools.self_rag.last_log.get("retrieved", [])
-    return answer, meta
+
+    def stream_tutor_answer():
+        try:
+            yield from tools.self_rag.iter_answer(
+                query, prompt, history_for_model(), user_context=attached_context
+            )
+        finally:
+            tools.self_rag.on_step = None
+            meta["retrieved"] = (
+                (tools.self_rag.last_log or {}).get("retrieved", [])
+            )
+
+    return stream_tutor_answer(), meta
 
 
 # --------------------------------------------------------------------- page
@@ -232,32 +239,35 @@ started = time.perf_counter()
 with st.chat_message("assistant", avatar=":material/school:"):
     user_content, notes, attachment_context = prompt, [], []
     per_file = max(1500, ATTACHMENT_CHARS // max(1, len(uploads)))
+    status = st.status("Thinking…", expanded=False)
     try:
-        with st.status("Thinking…", expanded=False) as status:
-            for uploaded in uploads:
-                status.update(label=f"Reading {uploaded.name}…")
-                path, note, extra = read_upload(uploaded, per_file)
-                user_record["attachments"].append(path)
-                if note:
-                    notes.append(note)
-                if extra:
-                    attachment_context.append(extra)
-            attached_context = "\n\n".join(attachment_context)
-            user_content += attached_context
-            user_record["model_content"] = user_content
-            result, meta = respond(
-                prompt, prompt, "\n".join(notes), status, attached_context
-            )
-            status.update(label="Done", state="complete")
+        for uploaded in uploads:
+            status.update(label=f"Reading {uploaded.name}…")
+            path, note, extra = read_upload(uploaded, per_file)
+            user_record["attachments"].append(path)
+            if note:
+                notes.append(note)
+            if extra:
+                attachment_context.append(extra)
+        attached_context = "\n\n".join(attachment_context)
+        user_content += attached_context
+        user_record["model_content"] = user_content
+        result, meta = respond(
+            prompt, prompt, "\n".join(notes), status, attached_context
+        )
         if isinstance(result, str):
             st.markdown(result)
             reply = result
         else:
             parts = []
             streamed = st.write_stream(stream_into(result, parts))
-            reply = (streamed if isinstance(streamed, str) else "".join(parts)).strip()
+            reply = (
+                streamed if isinstance(streamed, str) else "".join(parts)
+            ).strip()
+        status.update(label="Done", state="complete")
         reply = reply or "I could not write that. Try rephrasing."
     except Exception as exc:  # keep the chat alive on any tool failure
+        status.update(label="Request failed", state="error")
         meta = {"intent": "error"}
         reply = f"That request failed: {exc}\n\nTry again, or rephrase it."
         st.error(reply)

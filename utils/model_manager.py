@@ -745,17 +745,73 @@ class ModelManager:
                 yield self._error_text(fallback_exc)
                 return
         try:
-            parts = []
+            buffered = ""
+            full_answer = ""
+            blocked = False
             for chunk in stream:
                 if chunk.choices:
                     text = getattr(chunk.choices[0].delta, "content", None)
                     if text:
-                        parts.append(text)
+                        buffered += text
+                        while True:
+                            boundary = re.search(
+                                r"[.!?][\"')\]]*\s+|\n+",
+                                buffered,
+                            )
+                            if boundary is None:
+                                break
+                            batch = buffered[:boundary.end()]
+                            buffered = buffered[boundary.end():]
+                            full_answer += batch
+                            protected = self._screen_output(
+                                full_answer,
+                                protected_values=(messages[0]["content"],),
+                                moderate=False,
+                            )
+                            if protected:
+                                yield protected
+                                blocked = True
+                                break
+                            safe = check_output_toxicity(
+                                batch, self._create_moderation_completion
+                            )
+                            if safe is not True:
+                                yield (
+                                    SAFETY_BLOCKED_MESSAGE
+                                    if safe is False
+                                    else SAFETY_UNAVAILABLE_MESSAGE
+                                )
+                                blocked = True
+                                break
+                            yield batch
+                if blocked:
+                    break
             self._record(model, started)
-            answer = "".join(parts)
-            yield self._screen_output(
-                answer, protected_values=(messages[0]["content"],)
-            ) or answer
+            if blocked:
+                return
+            if buffered:
+                full_answer += buffered
+                protected = self._screen_output(
+                    full_answer,
+                    protected_values=(messages[0]["content"],),
+                    moderate=False,
+                )
+                if protected:
+                    yield protected
+                    return
+                safe = check_output_toxicity(
+                    buffered, self._create_moderation_completion
+                )
+                if safe is not True:
+                    yield (
+                        SAFETY_BLOCKED_MESSAGE
+                        if safe is False
+                        else SAFETY_UNAVAILABLE_MESSAGE
+                    )
+                    return
+                yield buffered
+            elif not full_answer:
+                yield "The model returned an empty response. Try again."
         except Exception as exc:
             yield self._error_text(exc)
 
