@@ -28,7 +28,7 @@ copy .env.example .env           # then put your key in GROQ_API_KEY
 streamlit run app.py
 ```
 
-Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`) or turn on web search inside Self-RAG (`SELF_RAG_WEB=1`).
+Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`). Tutor Chat automatically uses DuckDuckGo for explicit online-search requests and time-sensitive questions; set `SELF_RAG_WEB=0` to disable these lookups.
 
 User-visible generated text, including streamed answers and image descriptions, is screened by a
 separate Groq moderation model before it is shown. A valid `GROQ_API_KEY` is therefore
