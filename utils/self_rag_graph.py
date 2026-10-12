@@ -41,6 +41,7 @@ class SelfRAGState(TypedDict, total=False):
     revised: bool
     claims_total: int
     claims_unsupported: int
+    calculation_errors: List[str]
 
 
 class SelfRAGEngine:
@@ -130,6 +131,7 @@ class SelfRAGEngine:
             "support": "not checked",
             "usefulness": "not checked",
             "revised": False,
+            "calculation_errors": [],
         }
         try:
             result = self.graph.invoke(state, config={"recursion_limit": 32})
@@ -146,6 +148,7 @@ class SelfRAGEngine:
                 "revised": result.get("revised", False),
                 "claims_total": result.get("claims_total", 0),
                 "claims_unsupported": result.get("claims_unsupported", 0),
+                "calculation_errors": result.get("calculation_errors", []),
             }
         except Exception:
             self.last_log = {
@@ -157,6 +160,7 @@ class SelfRAGEngine:
                 "support": "not checked",
                 "usefulness": "not checked",
                 "revised": state.get("revised", False),
+                "calculation_errors": state.get("calculation_errors", []),
             }
             raise
         if answer:
@@ -325,10 +329,11 @@ class SelfRAGEngine:
         if state.get("retry_count", 0):
             prompt = (
                 f"Student request:\n{prompt[:1500]}\n\n"
-                f"Previous draft:\n{state.get('answer', '')[:2200]}\n\n"
+                f"Previous draft:\n{state.get('answer', '')[:6000]}\n\n"
                 f"Self-check feedback:\n{state.get('feedback', '')[:1200]}\n\n"
                 "Write a corrected, complete answer. Fix unsupported claims and address "
-                "the listed gaps. Return only the answer."
+                "the listed gaps. Recalculate numeric results and make all table rows, "
+                "units, assumptions, and summary totals consistent. Return only the answer."
             )
         state["calls"] = state.get("calls", 0) + 1
         state["answer"] = self.model.answer(
@@ -355,11 +360,17 @@ class SelfRAGEngine:
             f"Question: {state['query']}\n\n"
             "List up to 8 factual claims, marking each fully, partially, unsupported, "
             "or not_a_claim. Set useful to high, medium, or low. List important missing "
-            "points; use an empty list when complete."
+            "points; use an empty list when complete. If the draft contains calculations "
+            "or a numeric table, independently audit its formulas, units, payment timing, "
+            "representative rows, and summary totals against the stated assumptions. Add "
+            "each concrete arithmetic or reconciliation error to calculation_errors. "
+            "If an after-tax result is given without the tax year, regime, taxpayer status, "
+            "or income details needed to determine it, flag that as a calculation error. "
+            "Do not report a table row as absent unless you checked the complete draft."
         )
         review_context = (
             f"Retrieved evidence:\n{state.get('context', '')[:2000]}\n\n"
-            f"Draft answer to evaluate:\n{answer[:2200]}"
+            f"Complete draft answer to evaluate:\n{answer[:8000]}"
         )
         schema = {
             "type": "object",
@@ -382,8 +393,9 @@ class SelfRAGEngine:
                 },
                 "useful": {"type": "string", "enum": ["high", "medium", "low"]},
                 "missing": {"type": "array", "items": {"type": "string"}},
+                "calculation_errors": {"type": "array", "items": {"type": "string"}},
             },
-            "required": ["claims", "useful", "missing"],
+            "required": ["claims", "useful", "missing", "calculation_errors"],
         }
         state["calls"] = state.get("calls", 0) + 1
         parsed = self.model.complete_json(
@@ -408,6 +420,13 @@ class SelfRAGEngine:
         if not isinstance(missing_items, list):
             missing_items = []
         missing = [str(item)[:200] for item in missing_items[:5] if str(item).strip()]
+        calculation_error_items = parsed.get("calculation_errors")
+        if not isinstance(calculation_error_items, list):
+            calculation_error_items = []
+        calculation_errors = [
+            str(item)[:200] for item in calculation_error_items[:5] if str(item).strip()
+        ]
+        state["calculation_errors"] = calculation_errors
         has_sources = bool(state.get("local_notes") or state.get("web_notes"))
         state["support"] = (
             "no relevant sources" if not has_sources
@@ -418,7 +437,8 @@ class SelfRAGEngine:
         # Revise only for real problems. "medium with one gap" used to trigger a
         # full regeneration on most questions, doubling latency for little gain.
         state["needs_revision"] = (
-            (has_sources and bool(unsupported))
+            bool(calculation_errors)
+            or (has_sources and bool(unsupported))
             or useful == "low"
             or (useful == "medium" and len(missing) >= 2)
         )
@@ -426,6 +446,7 @@ class SelfRAGEngine:
         state["claims_unsupported"] = len(unsupported)
         state["feedback"] = (
             f"Unsupported claims: {'; '.join(unsupported) or 'none'}\n"
+            f"Calculation errors: {'; '.join(calculation_errors) or 'none'}\n"
             f"Missing points: {'; '.join(missing) or 'none'}"
         )
         return state

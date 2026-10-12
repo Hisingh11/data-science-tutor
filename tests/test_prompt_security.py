@@ -188,6 +188,32 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(requests[1]["max_tokens"], 8192)
         self.assertEqual(requests[2]["model"], "mock-moderator")
 
+    def test_calculation_answers_start_with_low_effort_and_larger_budget(self):
+        manager = _model_manager()
+        manager.models["reasoning"] = "openai/gpt-oss-120b"
+        manager._extras_supported = True
+
+        answer = manager.answer(
+            "Calculate 6.25% annual interest on a monthly investment."
+        )
+
+        request = manager.client.chat.completions.requests[0]
+        self.assertEqual(answer, '{"ok": true}')
+        self.assertEqual(request["reasoning_effort"], "low")
+        self.assertEqual(request["max_tokens"], 4096)
+        self.assertIn("state material assumptions", request["messages"][0]["content"])
+
+    def test_non_calculation_answers_keep_medium_effort(self):
+        manager = _model_manager()
+        manager.models["reasoning"] = "openai/gpt-oss-120b"
+        manager._extras_supported = True
+
+        manager.answer("Explain what data science is.", max_tokens=2048)
+
+        request = manager.client.chat.completions.requests[0]
+        self.assertEqual(request["reasoning_effort"], "medium")
+        self.assertEqual(request["max_tokens"], 2048)
+
     def test_json_output_is_not_returned_when_toxic(self):
         manager = _model_manager()
         manager.client.chat.completions.classification = "toxic"

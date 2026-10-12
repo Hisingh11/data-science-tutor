@@ -8,6 +8,7 @@ import streamlit as st
 
 from ui.state import core, log_feedback, save_upload, stream_into
 from ui.theme import badge, hero
+from utils.calculation_engine import is_calculation_request, monte_carlo_report
 from utils.image_recognition import analyze_image
 from utils.model_manager import trim_history
 from utils.router import (ASSIGNMENT_TOPICS, INTERVIEW_TOPICS, classify_intent, pick_difficulty,
@@ -182,6 +183,17 @@ def respond(prompt, user_content, image_note, status, attached_context=""):
         return tools.code.iter_generate_code(
             with_history(prompt), pick_language(prompt), context=attached_context
         ), meta
+
+    if intent == "tutor" and is_calculation_request(prompt):
+        status.update(label="Building a probabilistic calculation plan…")
+        result = monte_carlo_report(
+            prompt,
+            tools.model,
+            context=attached_context,
+            history=history_for_model(),
+        )
+        meta["intent"] = "monte_carlo"
+        return result, meta
 
     # Default: LangGraph Self-RAG tutor.
     query = prompt if not (image_note and len(prompt.split()) < 6) else f"{prompt}\n{image_note[:400]}"

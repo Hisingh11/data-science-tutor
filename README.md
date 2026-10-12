@@ -110,7 +110,20 @@ evals/                  datasets/, suites.py, run_evals.py, mock_model.py, resul
 | `code` | `openai/gpt-oss-120b` | code generation and review |
 | vision | `GROQ_VISION_MODEL`, then `qwen/qwen3.8-27b`, then Llama 4 Scout/Maverick | image attachments |
 
-Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Self-RAG allows 1 revision by default.
+Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Numeric questions
+are routed to a Monte Carlo calculation workflow: the LLM proposes explicit
+low/likely/high input ranges and formulas, while a restricted local arithmetic
+interpreter runs 10,000 triangular-distribution samples. Results show the 5th,
+50th, and 95th percentiles and label model-proposed inputs as illustrative. This
+does not validate tax or legal assumptions; the ranges are not confidence
+intervals, and high-stakes results must be independently verified. Other tutor
+answers retain medium reasoning effort; Self-RAG also asks its reviewer to flag
+arithmetic inconsistencies for a retry.
+Self-RAG allows 1 revision by default.
+Monthly fixed-deposit projections use a bounded local recurrence for monthly
+compounding, end-of-month deposits, and annual tax on interest before reinvestment.
+An unspecified tax rate is shown only as an illustrative scenario, not as a calculation
+of applicable Indian tax law.
 
 ### Prompt-injection safeguards
 

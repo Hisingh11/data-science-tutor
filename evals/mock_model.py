@@ -42,7 +42,7 @@ class MockModel:
     def complete_json(self, prompt, schema, name="result", model_type="reasoning", temperature=0.2, max_tokens=4096, context=""):
         self.calls.append({"model": model_type, "latency_s": 0.0})
         if name == "selfrag_reflection":
-            return {"claims": [], "useful": "medium", "missing": []}
+            return {"claims": [], "useful": "medium", "missing": [], "calculation_errors": []}
         if name == "interview_grade":
             words = len(re.findall(r"\w+", context or prompt))
             score = 2 if words < 15 else 6 if words < 40 else 8
