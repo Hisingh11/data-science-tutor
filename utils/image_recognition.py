@@ -7,6 +7,7 @@ from utils.model_manager import (
     SAFETY_BLOCKED_MESSAGE,
     SAFETY_MODEL,
     SAFETY_UNAVAILABLE_MESSAGE,
+    ModelManager,
     check_output_toxicity,
     contains_protected_content,
     get_groq_api_key,
@@ -17,15 +18,13 @@ try:
 except ImportError:  # pragma: no cover
     Groq = None
 
-# The configured model is tried first. If Groq reports it as unknown,
-# decommissioned, or not vision-capable, the next working model is used.
+# Vision models (only Groq's qwen supports vision currently)
 VISION_MODELS = list(dict.fromkeys(
     model for model in (
         os.getenv("GROQ_VISION_MODEL", "").strip(),
         "qwen/qwen3.8-27b",
     ) if model
 ))
-VISION_MODEL = VISION_MODELS[0]
 MAX_IMAGE_BYTES = 4 * 1024 * 1024  # Groq rejects base64 images above ~4 MB
 
 
@@ -45,13 +44,30 @@ def _mime_type(image_path):
     }.get(ext, "image/jpeg")
 
 
-def analyze_image(image_path, prompt="Describe this image in detail"):
+def _get_vision_client():
+    """Get a Groq client for vision tasks. Tries ModelManager first, then direct Groq."""
+    # Try ModelManager first (may already have Groq client initialized for vision)
+    try:
+        mm = ModelManager()
+        if mm.ready and mm.provider == "groq":
+            return mm.client
+    except Exception:
+        pass
+
+    # Fallback to direct Groq client
     api_key = get_groq_api_key()
-    if not api_key or Groq is None:
-        return "Image analysis error: GROQ_API_KEY is not configured."
+    if api_key and Groq is not None:
+        return Groq(api_key=api_key)
+    return None
+
+
+def analyze_image(image_path, prompt="Describe this image in detail"):
+    client = _get_vision_client()
+    if client is None:
+        return "Image analysis error: no vision-capable provider configured (need GROQ_API_KEY)."
     if os.path.getsize(image_path) > MAX_IMAGE_BYTES:
         return "Image analysis error: the image is larger than 4 MB. Resize it and try again."
-    client = Groq(api_key=api_key)
+
     payload = f"data:{_mime_type(image_path)};base64,{encode_image(image_path)}"
     last_error = ""
     system_prompt = (
@@ -66,10 +82,7 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
             completion = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt,
-                    },
+                    {"role": "system", "content": system_prompt},
                     {
                         "role": "user",
                         "content": [
@@ -85,7 +98,7 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
             if not text:
                 return "No description returned."
             if contains_protected_content(
-                text, (api_key, INJECTION_RESISTANCE_PROMPT, system_prompt)
+                text, (get_groq_api_key(), INJECTION_RESISTANCE_PROMPT, system_prompt)
             ):
                 return LEAKAGE_BLOCKED_MESSAGE
             screened = check_output_toxicity(

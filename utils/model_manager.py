@@ -250,19 +250,26 @@ class ModelManager:
         self.calls: List[Dict] = []
         self._provider = "groq"  # or "openai_compat"
 
-        # Initialize Groq client
-        if self.api_key and Groq is not None:
+        # Initialize OpenAI-compatible client FIRST if configured (user preference)
+        if OPENAI_COMPAT_API_KEY and OpenAI is not None:
+            try:
+                self.client = OpenAI(
+                    api_key=OPENAI_COMPAT_API_KEY,
+                    base_url=OPENAI_COMPAT_BASE_URL or None,
+                    timeout=90,
+                )
+                self._provider = "openai_compat"
+                self.openai_compat_client = self.client
+            except Exception as exc:
+                self.init_error = f"OpenAI-compat init failed: {exc}"
+
+        # Initialize Groq client as fallback or for vision
+        if self.client is None and self.api_key and Groq is not None:
             try:
                 self.client = Groq(api_key=self.api_key, max_retries=2, timeout=90)
                 self._provider = "groq"
             except Exception as exc:
                 self.init_error = f"Groq init failed: {exc}"
-
-        # Initialize OpenAI-compatible client if Groq failed or not configured
-        if self.client is None and self.openai_compat_client is not None:
-            self.client = self.openai_compat_client
-            self._provider = "openai_compat"
-            self.init_error = ""
 
         if self.client is None:
             if Groq is None and OpenAI is None:
