@@ -104,10 +104,29 @@ SAFETY_UNAVAILABLE_MESSAGE = (
     "I couldn't display the response because the toxicity safety check was unavailable. "
     "Please try again later."
 )
-SAFETY_MODEL = os.getenv(
-    "GROQ_MODERATION_MODEL",
-    os.getenv("GROQ_FAST_MODEL", "openai/gpt-oss-20b"),
-)
+DEFAULT_MODERATION_MODEL = "openai/gpt-oss-20b"
+DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
+
+
+def _configured_moderation_model() -> str:
+    fast_model = (
+        os.getenv("GROQ_FAST_MODEL", DEFAULT_MODERATION_MODEL).strip()
+        or DEFAULT_MODERATION_MODEL
+    )
+    moderation_model = (
+        os.getenv("GROQ_MODERATION_MODEL", "").strip() or fast_model
+    )
+    if moderation_model.casefold() in DECOMMISSIONED_MODERATION_MODELS:
+        fallback = fast_model
+        if fallback.casefold() in DECOMMISSIONED_MODERATION_MODELS:
+            fallback = DEFAULT_MODERATION_MODEL
+        logging.warning(
+            "Configured moderation model %s is decommissioned; using %s",
+            moderation_model,
+            fallback,
+        )
+        return fallback
+    return moderation_model
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
                        "minItems", "maxItems", "exclusiveMinimum", "exclusiveMaximum"}
@@ -232,7 +251,7 @@ class ModelManager:
         self.last_json_error = ""
         self.client = None
         self.moderation_client = None
-        self.moderation_model = SAFETY_MODEL
+        self.moderation_model = _configured_moderation_model()
         self._moderation_extras_supported = True
         self.calls: List[Dict] = []
         self._provider = "groq"
@@ -361,6 +380,26 @@ class ModelManager:
                     self._moderation_extras_supported = False
                     extras = {}
                     continue
+                if "model_decommissioned" in error or (
+                    "model" in error and "decommissioned" in error
+                ):
+                    fallback = self.models.get("fast", DEFAULT_MODERATION_MODEL)
+                    if fallback.casefold() in DECOMMISSIONED_MODERATION_MODELS:
+                        fallback = DEFAULT_MODERATION_MODEL
+                    if self.moderation_model != fallback:
+                        logging.warning(
+                            "Moderation model %s was decommissioned; retrying with %s",
+                            self.moderation_model,
+                            fallback,
+                        )
+                        self.moderation_model = fallback
+                        extras = (
+                            {"reasoning_effort": "low"}
+                            if self._moderation_extras_supported
+                            and "gpt-oss" in fallback
+                            else {}
+                        )
+                        continue
                 delay = self._rate_limit_retry_delay(exc)
                 if attempt == 0 and delay is not None:
                     logging.warning(

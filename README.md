@@ -35,7 +35,8 @@ separate Groq moderation model before it is shown. A valid `GROQ_API_KEY` is the
 required for the tutor and moderation.
 The default moderation model is
 `openai/gpt-oss-20b` (or the configured fast model); set `GROQ_MODERATION_MODEL`
-to override it. Unsafe,
+to override it. If the configured model has been decommissioned, the app retries
+moderation with the configured fast model (or `openai/gpt-oss-20b`). Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
 adds an API request and latency to each displayed response.

@@ -25,11 +25,16 @@ class _FakeCompletions:
         self.stream_output = ("generated ", "answer")
         self.rate_limited_models = set()
         self.rate_limit_attempts = {}
+        self.decommissioned_models = set()
         self.rate_limit_exception = _RateLimitError
 
     def create(self, **kwargs):
         self.requests.append(kwargs)
         model = kwargs.get("model")
+        if model in self.decommissioned_models:
+            raise _DecommissionedModelError(
+                f"Error code: 400 model_decommissioned: {model}"
+            )
         if (model in self.rate_limited_models
                 or self.rate_limit_attempts.get(model, 0) > 0):
             remaining = self.rate_limit_attempts.get(model, 0)
@@ -69,6 +74,10 @@ class _ShortRateLimitError(Exception):
         }
     }
     response = SimpleNamespace(headers={})
+
+
+class _DecommissionedModelError(Exception):
+    status_code = 400
 
 
 class _LongRateLimitError(Exception):
@@ -113,6 +122,20 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(manager.models["reasoning"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["fast"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["code"], "openai/gpt-oss-120b")
+
+    def test_decommissioned_moderation_override_uses_fast_model(self):
+        client = SimpleNamespace()
+        with (
+            patch.dict(os.environ, {
+                "GROQ_MODERATION_MODEL": "meta-llama/llama-guard-4-12b",
+                "GROQ_FAST_MODEL": "openai/gpt-oss-20b",
+            }, clear=True),
+            patch("utils.model_manager.Groq", return_value=client),
+            patch("utils.model_manager.get_groq_api_key", return_value="groq-key"),
+        ):
+            manager = ModelManager()
+
+        self.assertEqual(manager.moderation_model, "openai/gpt-oss-20b")
 
     def test_system_prompt_prefers_evidence_and_admits_uncertainty(self):
         manager = _model_manager()
@@ -371,6 +394,25 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(answer, '{"ok": true}')
         self.assertEqual(len(moderation.requests), 2)
         sleep.assert_called_once_with(18.8175)
+
+    def test_decommissioned_moderation_model_falls_back_and_retries(self):
+        manager = _model_manager()
+        manager.moderation_model = "meta-llama/llama-guard-4-12b"
+        manager.moderation_client.chat.completions.decommissioned_models.add(
+            manager.moderation_model
+        )
+
+        answer = manager.answer("Explain bias and variance.")
+
+        self.assertEqual(answer, '{"ok": true}')
+        self.assertEqual(
+            [
+                request["model"]
+                for request in manager.moderation_client.chat.completions.requests
+            ],
+            ["meta-llama/llama-guard-4-12b", "mock-fast"],
+        )
+        self.assertEqual(manager.moderation_model, "mock-fast")
 
     def test_safe_answer_is_screened_with_separate_moderation_client(self):
         manager = _model_manager()
