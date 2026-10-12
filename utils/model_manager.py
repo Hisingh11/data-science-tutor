@@ -78,7 +78,7 @@ LEAKAGE_BLOCKED_MESSAGE = (
     "I couldn't display that response because it may contain confidential instructions "
     "or credentials."
 )
-SAFETY_MODEL = os.getenv("GROQ_MODERATION_MODEL", "meta-llama/llama-guard-4-12b")
+SAFETY_MODEL = os.getenv("GROQ_MODERATION_MODEL", "openai/gpt-oss-120b")
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
                        "minItems", "maxItems", "exclusiveMinimum", "exclusiveMaximum"}
@@ -284,7 +284,7 @@ class ModelManager:
                 model=self.moderation_model,
                 messages=messages,
                 temperature=0,
-                max_tokens=8,
+                max_tokens=32,
             ),
         )
         if safe is True:

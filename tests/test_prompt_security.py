@@ -139,6 +139,7 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(answer, SAFETY_BLOCKED_MESSAGE)
         moderator_request = manager.client.chat.completions.requests[-1]
         self.assertEqual(moderator_request["model"], "mock-moderator")
+        self.assertEqual(moderator_request["max_tokens"], 32)
         self.assertIn("You are an insulting answer.", moderator_request["messages"][1]["content"])
 
     def test_streamed_text_is_moderated_before_any_content_is_released(self):

@@ -33,7 +33,7 @@ Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONI
 
 Generated text, including streamed answers and image descriptions, is screened by a
 separate Groq moderation model before it is shown. The default is
-`meta-llama/llama-guard-4-12b`; set `GROQ_MODERATION_MODEL` to override it. Unsafe,
+`openai/gpt-oss-120b`; set `GROQ_MODERATION_MODEL` to override it. Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
 adds an API request and latency to each generated response.

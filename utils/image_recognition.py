@@ -96,7 +96,7 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
                     model=SAFETY_MODEL,
                     messages=messages,
                     temperature=0,
-                    max_tokens=8,
+                    max_tokens=32,
                 ),
             )
             if screened is False:
