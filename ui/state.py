@@ -20,14 +20,20 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FEEDBACK_PATH = os.path.join(ROOT, "data", "feedback.jsonl")
 UPLOAD_DIR = os.path.join(ROOT, "data", "uploads")
 ASSIGNMENTS_DIR = os.path.join(ROOT, "assignments")
+MODEL_CACHE_VERSION = "moderation-gpt-oss-safeguard-20b-v1"
+CORE_MODEL_VERSION_KEY = "_core_model_version"
 
 
 @st.cache_resource(show_spinner=False)
-def shared_model() -> ModelManager:
+def shared_model(cache_version: str) -> ModelManager:
     """One Groq client per server process (cleared by 'Reload API key').
 
+    ``cache_version`` forces a fresh client/model manager when deployed behavior
+    changes, even if Streamlit preserves cached resources across app updates.
     DSBOT_MOCK=1 swaps in the offline fake model, for UI work without a key.
     """
+    if cache_version != MODEL_CACHE_VERSION:
+        raise ValueError("Unsupported model cache version.")
     if os.getenv("DSBOT_MOCK") == "1":
         from evals.mock_model import MockModel
 
@@ -44,8 +50,8 @@ def shared_rag() -> RAGEngine:
 
 def core() -> SimpleNamespace:
     """Per-session tools. Interview and assignment state must not leak between users."""
-    if "core" not in st.session_state:
-        model = shared_model()
+    if st.session_state.get(CORE_MODEL_VERSION_KEY) != MODEL_CACHE_VERSION:
+        model = shared_model(MODEL_CACHE_VERSION)
         st.session_state.core = SimpleNamespace(
             model=model,
             rag=shared_rag(),
@@ -55,12 +61,14 @@ def core() -> SimpleNamespace:
             code=CodeAssistant(model),
             research=DeepResearchEngine(model),
         )
+        st.session_state[CORE_MODEL_VERSION_KEY] = MODEL_CACHE_VERSION
     return st.session_state.core
 
 
 def reset_core():
     shared_model.clear()
     st.session_state.pop("core", None)
+    st.session_state.pop(CORE_MODEL_VERSION_KEY, None)
 
 
 def save_upload(uploaded) -> str:
