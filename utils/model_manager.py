@@ -104,28 +104,20 @@ SAFETY_UNAVAILABLE_MESSAGE = (
     "I couldn't display the response because the toxicity safety check was unavailable. "
     "Please try again later."
 )
-DEFAULT_MODERATION_MODEL = "openai/gpt-oss-20b"
+DEFAULT_MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
 DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
 
 
 def _configured_moderation_model() -> str:
-    fast_model = (
-        os.getenv("GROQ_FAST_MODEL", DEFAULT_MODERATION_MODEL).strip()
-        or DEFAULT_MODERATION_MODEL
-    )
-    moderation_model = (
-        os.getenv("GROQ_MODERATION_MODEL", "").strip() or fast_model
-    )
+    moderation_model = os.getenv("GROQ_MODERATION_MODEL", "").strip()
+    moderation_model = moderation_model or DEFAULT_MODERATION_MODEL
     if moderation_model.casefold() in DECOMMISSIONED_MODERATION_MODELS:
-        fallback = fast_model
-        if fallback.casefold() in DECOMMISSIONED_MODERATION_MODELS:
-            fallback = DEFAULT_MODERATION_MODEL
         logging.warning(
             "Configured moderation model %s is decommissioned; using %s",
             moderation_model,
-            fallback,
+            DEFAULT_MODERATION_MODEL,
         )
-        return fallback
+        return DEFAULT_MODERATION_MODEL
     return moderation_model
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
@@ -383,9 +375,7 @@ class ModelManager:
                 if "model_decommissioned" in error or (
                     "model" in error and "decommissioned" in error
                 ):
-                    fallback = self.models.get("fast", DEFAULT_MODERATION_MODEL)
-                    if fallback.casefold() in DECOMMISSIONED_MODERATION_MODELS:
-                        fallback = DEFAULT_MODERATION_MODEL
+                    fallback = DEFAULT_MODERATION_MODEL
                     if self.moderation_model != fallback:
                         logging.warning(
                             "Moderation model %s was decommissioned; retrying with %s",

@@ -33,10 +33,10 @@ Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONI
 User-visible generated text, including streamed answers and image descriptions, is screened by a
 separate Groq moderation model before it is shown. A valid `GROQ_API_KEY` is therefore
 required for the tutor and moderation.
-The default moderation model is
-`openai/gpt-oss-20b` (or the configured fast model); set `GROQ_MODERATION_MODEL`
+The default moderation model is `openai/gpt-oss-safeguard-20b`, Groq's recommended
+replacement for the decommissioned Llama Guard model. Set `GROQ_MODERATION_MODEL`
 to override it. If the configured model has been decommissioned, the app retries
-moderation with the configured fast model (or `openai/gpt-oss-20b`). Unsafe,
+moderation with `openai/gpt-oss-safeguard-20b`. Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
 adds an API request and latency to each displayed response.

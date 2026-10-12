@@ -122,6 +122,9 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(manager.models["reasoning"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["fast"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["code"], "openai/gpt-oss-120b")
+        self.assertEqual(
+            manager.moderation_model, "openai/gpt-oss-safeguard-20b"
+        )
 
     def test_decommissioned_moderation_override_uses_fast_model(self):
         client = SimpleNamespace()
@@ -135,7 +138,9 @@ class PromptSecurityTests(unittest.TestCase):
         ):
             manager = ModelManager()
 
-        self.assertEqual(manager.moderation_model, "openai/gpt-oss-20b")
+        self.assertEqual(
+            manager.moderation_model, "openai/gpt-oss-safeguard-20b"
+        )
 
     def test_system_prompt_prefers_evidence_and_admits_uncertainty(self):
         manager = _model_manager()
@@ -410,9 +415,11 @@ class PromptSecurityTests(unittest.TestCase):
                 request["model"]
                 for request in manager.moderation_client.chat.completions.requests
             ],
-            ["meta-llama/llama-guard-4-12b", "mock-fast"],
+            ["meta-llama/llama-guard-4-12b", "openai/gpt-oss-safeguard-20b"],
         )
-        self.assertEqual(manager.moderation_model, "mock-fast")
+        self.assertEqual(
+            manager.moderation_model, "openai/gpt-oss-safeguard-20b"
+        )
 
     def test_safe_answer_is_screened_with_separate_moderation_client(self):
         manager = _model_manager()
