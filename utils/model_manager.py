@@ -5,6 +5,7 @@ Fixes over the previous version
   back to ``message.reasoning`` when ``content`` was empty).
 - gpt-oss models get ``reasoning_effort`` so JSON calls do not burn their whole
   token budget thinking and come back empty.
+- Empty text answers get one lower-effort retry with a larger output budget.
 - Strict JSON schemas are sanitised (Groq strict mode rejects keywords such as
   ``minimum``/``maximum``) and fenced JSON is parsed.
 - Rate-limit / transient errors are retried with backoff.
@@ -346,15 +347,30 @@ class ModelManager:
         if not self.client:
             return self.init_error or "API key not configured"
         messages = self._chat_messages(prompt, history, context, system)
+        model = self.models.get(model_type, self.models["reasoning"])
         try:
             response = self._create(
                 effort="medium",
-                model=self.models.get(model_type, self.models["reasoning"]),
+                model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            text = self._message_text(response) or "The model returned an empty response. Try again."
+            text = self._message_text(response)
+            if not text:
+                logging.warning(
+                    "Model %s returned no visible answer; retrying with lower reasoning effort",
+                    model,
+                )
+                response = self._create(
+                    effort="low",
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max(max_tokens * 2, 4096),
+                )
+                text = self._message_text(response)
+            text = text or "The model returned an empty response. Try again."
             return self._screen_output(
                 text, protected_values=(messages[0]["content"],)
             ) or text

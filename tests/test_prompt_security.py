@@ -20,6 +20,7 @@ class _FakeCompletions:
         self.requests = []
         self.classification = "safe"
         self.output = '{"ok": true}'
+        self.outputs = []
         self.stream_output = ("generated ", "answer")
 
     def create(self, **kwargs):
@@ -34,7 +35,7 @@ class _FakeCompletions:
                 for part in self.stream_output
             ]
         else:
-            content = self.output
+            content = self.outputs.pop(0) if self.outputs else self.output
         message = SimpleNamespace(content=content)
         return SimpleNamespace(
             choices=[SimpleNamespace(message=message)],
@@ -171,6 +172,21 @@ class PromptSecurityTests(unittest.TestCase):
         answer = manager.answer("Explain this topic.")
 
         self.assertEqual(answer, SAFETY_UNAVAILABLE_MESSAGE)
+
+    def test_empty_answer_retries_with_lower_effort_and_larger_budget(self):
+        manager = _model_manager()
+        manager.models["reasoning"] = "openai/gpt-oss-120b"
+        manager._extras_supported = True
+        manager.client.chat.completions.outputs = ["", "A recovered answer."]
+
+        answer = manager.answer("Explain this topic.")
+
+        requests = manager.client.chat.completions.requests
+        self.assertEqual(answer, "A recovered answer.")
+        self.assertEqual(requests[0]["reasoning_effort"], "medium")
+        self.assertEqual(requests[1]["reasoning_effort"], "low")
+        self.assertEqual(requests[1]["max_tokens"], 8192)
+        self.assertEqual(requests[2]["model"], "mock-moderator")
 
     def test_json_output_is_not_returned_when_toxic(self):
         manager = _model_manager()
