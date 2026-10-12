@@ -17,14 +17,12 @@ try:
 except ImportError:  # pragma: no cover
     Groq = None
 
-# The configured model is tried first. If Groq reports it as unknown or
-# decommissioned, the next vision-capable model is used instead.
+# The configured model is tried first. If Groq reports it as unknown,
+# decommissioned, or not vision-capable, the next working model is used.
 VISION_MODELS = list(dict.fromkeys(
     model for model in (
         os.getenv("GROQ_VISION_MODEL", "").strip(),
         "qwen/qwen3.8-27b",
-        "meta-llama/llama-4-scout-17b-16e-instruct",
-        "meta-llama/llama-4-maverick-17b-128e-instruct",
     ) if model
 ))
 VISION_MODEL = VISION_MODELS[0]
@@ -107,8 +105,11 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
         except Exception as exc:
             last_error = str(exc)
             lowered = last_error.lower()
-            if "model" in lowered and ("not found" in lowered or "decommission" in lowered
-                                       or "does not exist" in lowered or "not support" in lowered):
+            if ("not found" in lowered
+                    or "does not exist" in lowered
+                    or "decommission" in lowered
+                    or "not support" in lowered
+                    or "content must be a string" in lowered):
                 continue
             break
-    return f"Image analysis error: {last_error[:300]}"
+    return f"Image analysis error: no vision-capable model could process the image. (Last error: {last_error[:200]})"

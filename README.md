@@ -108,7 +108,7 @@ evals/                  datasets/, suites.py, run_evals.py, mock_model.py, resul
 | `reasoning` | `openai/gpt-oss-120b` | tutor answers, interview, grading, research, judge |
 | `fast` | `openai/gpt-oss-20b` | Self-RAG reflection and web grading |
 | `code` | `openai/gpt-oss-120b` | code generation and review |
-| vision | `GROQ_VISION_MODEL`, then `qwen/qwen3.8-27b`, then Llama 4 Scout/Maverick | image attachments |
+| vision | `GROQ_VISION_MODEL` (optional), then `qwen/qwen3.8-27b` | image attachments |
 
 Tutor answers use temperature 0.5 (was 0.85); checks use 0.35. Numeric questions
 are routed to a Monte Carlo calculation workflow: the LLM proposes explicit
