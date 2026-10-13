@@ -9,6 +9,7 @@ from utils.image_recognition import analyze_image
 from utils.model_manager import (
     INJECTION_RESISTANCE_PROMPT,
     LEAKAGE_BLOCKED_MESSAGE,
+    MODERATION_TIMEOUT_SECONDS,
     OUTPUT_SAFETY_PROMPT,
     SAFETY_BLOCKED_MESSAGE,
     SAFETY_UNAVAILABLE_MESSAGE,
@@ -341,7 +342,7 @@ class PromptSecurityTests(unittest.TestCase):
                          ["mock-reasoning", "mock-reasoning", "mock-fast"])
         sleep.assert_called_once_with(30.0)
 
-    def test_stream_answer_releases_moderated_sentences_before_stream_finishes(self):
+    def test_stream_answer_moderates_complete_answer_once_before_display(self):
         manager = _model_manager()
         completions = manager.client.chat.completions
         completions.stream_output = (
@@ -350,23 +351,21 @@ class PromptSecurityTests(unittest.TestCase):
             "Still generating",
         )
 
-        answer = manager.stream_answer("Explain streaming.")
+        streamed = list(manager.stream_answer("Explain streaming."))
 
-        self.assertEqual(next(answer), "First sentence. ")
-        self.assertEqual(completions.stream_consumed, ["First sentence. "])
-        self.assertEqual(
-            len(manager.moderation_client.chat.completions.requests), 1
-        )
-        self.assertEqual(
-            next(answer), "Second sentence. "
-        )
+        self.assertEqual(streamed, ["First sentence. Second sentence. Still generating"])
         self.assertEqual(
             completions.stream_consumed,
-            ["First sentence. ", "Second sentence. "],
+            ["First sentence. ", "Second sentence. ", "Still generating"],
         )
-        self.assertEqual(list(answer), ["Still generating"])
+        moderation_requests = manager.moderation_client.chat.completions.requests
+        self.assertEqual(len(moderation_requests), 1)
+        self.assertIn(
+            json.dumps("First sentence. Second sentence. Still generating"),
+            moderation_requests[0]["messages"][1]["content"],
+        )
 
-    def test_stream_answer_flushes_long_unpunctuated_output_in_bounded_batches(self):
+    def test_stream_answer_moderates_long_unpunctuated_output_once(self):
         manager = _model_manager()
         completions = manager.client.chat.completions
         completions.stream_output = (
@@ -374,36 +373,52 @@ class PromptSecurityTests(unittest.TestCase):
             "The remaining output.",
         )
 
-        answer = manager.stream_answer("Explain streaming.")
+        streamed = list(manager.stream_answer("Explain streaming."))
 
-        first_batch = next(answer)
-        self.assertLessEqual(len(first_batch), 240)
-        self.assertEqual(completions.stream_consumed, ["word " * 100])
-        self.assertEqual(
-            len(manager.moderation_client.chat.completions.requests), 1
-        )
-        remaining = "".join(answer)
-        self.assertTrue(remaining)
+        self.assertEqual(streamed, ["word " * 100 + "The remaining output."])
         self.assertEqual(
             completions.stream_consumed,
             ["word " * 100, "The remaining output."],
         )
+        self.assertEqual(
+            len(manager.moderation_client.chat.completions.requests), 1
+        )
 
-    def test_stream_answer_stops_after_a_toxic_sentence(self):
+    def test_stream_answer_withholds_complete_toxic_answer(self):
         manager = _model_manager()
         completions = manager.client.chat.completions
         completions.stream_output = ("Safe sentence. ", "Next sentence. ")
-        manager.moderation_client.chat.completions.moderation_outputs = [
-            "SAFE",
-            "TOXIC",
-        ]
+        manager.moderation_client.chat.completions.moderation_output = "TOXIC"
 
         streamed = list(manager.stream_answer("Explain streaming."))
 
-        self.assertEqual(streamed, ["Safe sentence. ", SAFETY_BLOCKED_MESSAGE])
+        self.assertEqual(streamed, [SAFETY_BLOCKED_MESSAGE])
         self.assertEqual(
             completions.stream_consumed, ["Safe sentence. ", "Next sentence. "]
         )
+        self.assertEqual(
+            len(manager.moderation_client.chat.completions.requests), 1
+        )
+
+    def test_stream_answer_retries_rate_limited_moderation_only_once(self):
+        manager = _model_manager()
+        manager.client.chat.completions.stream_output = (
+            "First sentence. ",
+            "Second sentence. ",
+            "Third sentence.",
+        )
+        moderation = manager.moderation_client.chat.completions
+        moderation.rate_limit_attempts["mock-moderation"] = 1
+        moderation.rate_limit_exception = _ShortRateLimitError
+
+        with patch("utils.model_manager.time.sleep") as sleep:
+            streamed = list(manager.stream_answer("Explain streaming."))
+
+        self.assertEqual(
+            streamed, ["First sentence. Second sentence. Third sentence."]
+        )
+        self.assertEqual(len(moderation.requests), 2)
+        sleep.assert_called_once_with(18.8175)
 
     def test_structured_rate_limit_falls_back_to_fast_model(self):
         manager = _model_manager()
@@ -493,6 +508,25 @@ class PromptSecurityTests(unittest.TestCase):
             manager.moderation_model, "openai/gpt-oss-safeguard-20b"
         )
 
+    def test_moderation_uses_a_short_timeout_separate_from_generation(self):
+        client = SimpleNamespace()
+        moderation_client = SimpleNamespace()
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "utils.model_manager.Groq",
+                side_effect=[client, moderation_client],
+            ) as groq,
+            patch("utils.model_manager.get_groq_api_key", return_value="groq-key"),
+        ):
+            manager = ModelManager()
+
+        self.assertIsNot(manager.moderation_client, manager.client)
+        self.assertEqual(groq.call_count, 2)
+        self.assertEqual(
+            groq.call_args_list[1].kwargs["timeout"], MODERATION_TIMEOUT_SECONDS
+        )
+
     def test_safe_answer_is_screened_with_separate_moderation_client(self):
         manager = _model_manager()
         manager.models["reasoning"] = "openai/gpt-oss-120b"
@@ -507,6 +541,7 @@ class PromptSecurityTests(unittest.TestCase):
 
     def test_groq_is_the_only_tutor_provider(self):
         groq_client = SimpleNamespace()
+        moderation_client = SimpleNamespace()
         with (
             patch.dict(os.environ, {
                 "OPENAI_COMPAT_API_KEY": "ignored-key",
@@ -515,14 +550,17 @@ class PromptSecurityTests(unittest.TestCase):
                 "GROQ_FAST_MODEL": "openai/gpt-oss-20b",
                 "GROQ_CODE_MODEL": "openai/gpt-oss-120b",
             }),
-            patch("utils.model_manager.Groq", return_value=groq_client),
+            patch(
+                "utils.model_manager.Groq",
+                side_effect=[groq_client, moderation_client],
+            ),
             patch("utils.model_manager.get_groq_api_key", return_value="groq-key"),
         ):
             manager = ModelManager()
 
         self.assertEqual(manager.provider, "groq")
         self.assertIs(manager.client, groq_client)
-        self.assertIs(manager.moderation_client, groq_client)
+        self.assertIs(manager.moderation_client, moderation_client)
         self.assertEqual(manager.models["reasoning"], "openai/gpt-oss-120b")
 
     def test_toxic_answer_is_withheld(self):

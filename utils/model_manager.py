@@ -106,7 +106,7 @@ SAFETY_UNAVAILABLE_MESSAGE = (
 )
 DEFAULT_MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
 DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
-MAX_MODERATED_STREAM_BATCH_CHARS = 240
+MODERATION_TIMEOUT_SECONDS = 15
 
 
 def _configured_moderation_model() -> str:
@@ -120,21 +120,6 @@ def _configured_moderation_model() -> str:
         )
         return DEFAULT_MODERATION_MODEL
     return moderation_model
-
-
-def _next_moderated_stream_batch(buffered: str) -> Optional[int]:
-    """Return the next safe-to-moderate display boundary, if available."""
-    boundary = re.search(r"[.!?][\"')\]]*\s+|\n+", buffered)
-    if boundary:
-        return boundary.end()
-    if len(buffered) < MAX_MODERATED_STREAM_BATCH_CHARS:
-        return None
-    split_at = buffered.rfind(" ", 0, MAX_MODERATED_STREAM_BATCH_CHARS + 1)
-    if split_at <= 0:
-        split_at = MAX_MODERATED_STREAM_BATCH_CHARS
-    else:
-        split_at += 1
-    return split_at
 
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
@@ -272,15 +257,14 @@ class ModelManager:
                 self.init_error = f"Groq init failed: {exc}"
 
         if self.api_key and Groq is not None:
-            if self.client is not None:
-                self.moderation_client = self.client
-            else:
-                try:
-                    self.moderation_client = Groq(
-                        api_key=self.api_key, max_retries=0, timeout=30
-                    )
-                except Exception:
-                    logging.exception("Could not initialize the Groq moderation client")
+            try:
+                self.moderation_client = Groq(
+                    api_key=self.api_key,
+                    max_retries=0,
+                    timeout=MODERATION_TIMEOUT_SECONDS,
+                )
+            except Exception:
+                logging.exception("Could not initialize the Groq moderation client")
 
         if self.client is None:
             if Groq is None:
@@ -762,70 +746,36 @@ class ModelManager:
                 yield self._error_text(fallback_exc)
                 return
         try:
-            buffered = ""
-            full_answer = ""
-            blocked = False
+            answer_chunks = []
             for chunk in stream:
                 if chunk.choices:
                     text = getattr(chunk.choices[0].delta, "content", None)
                     if text:
-                        buffered += text
-                        while True:
-                            batch_end = _next_moderated_stream_batch(buffered)
-                            if batch_end is None:
-                                break
-                            batch = buffered[:batch_end]
-                            buffered = buffered[batch_end:]
-                            full_answer += batch
-                            protected = self._screen_output(
-                                full_answer,
-                                protected_values=(messages[0]["content"],),
-                                moderate=False,
-                            )
-                            if protected:
-                                yield protected
-                                blocked = True
-                                break
-                            safe = check_output_toxicity(
-                                batch, self._create_moderation_completion
-                            )
-                            if safe is not True:
-                                yield (
-                                    SAFETY_BLOCKED_MESSAGE
-                                    if safe is False
-                                    else SAFETY_UNAVAILABLE_MESSAGE
-                                )
-                                blocked = True
-                                break
-                            yield batch
-                if blocked:
-                    break
+                        answer_chunks.append(text)
             self._record(model, started)
-            if blocked:
-                return
-            if buffered:
-                full_answer += buffered
-                protected = self._screen_output(
-                    full_answer,
-                    protected_values=(messages[0]["content"],),
-                    moderate=False,
-                )
-                if protected:
-                    yield protected
-                    return
-                safe = check_output_toxicity(
-                    buffered, self._create_moderation_completion
-                )
-                if safe is not True:
-                    yield (
-                        SAFETY_BLOCKED_MESSAGE
-                        if safe is False
-                        else SAFETY_UNAVAILABLE_MESSAGE
-                    )
-                    return
-                yield buffered
-            elif not full_answer:
+            full_answer = "".join(answer_chunks)
+            if not full_answer:
                 yield "The model returned an empty response. Try again."
+                return
+            protected = self._screen_output(
+                full_answer,
+                protected_values=(messages[0]["content"],),
+                moderate=False,
+            )
+            if protected:
+                yield protected
+                return
+            safe = check_output_toxicity(
+                full_answer, self._create_moderation_completion
+            )
+            if safe is not True:
+                yield (
+                    SAFETY_BLOCKED_MESSAGE
+                    if safe is False
+                    else SAFETY_UNAVAILABLE_MESSAGE
+                )
+                return
+            yield full_answer
         except Exception as exc:
             yield self._error_text(exc)
 

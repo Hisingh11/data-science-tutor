@@ -30,18 +30,20 @@ streamlit run app.py
 
 Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`). Tutor Chat automatically uses DuckDuckGo for explicit online-search requests and time-sensitive questions; set `SELF_RAG_WEB=0` to disable these lookups.
 
-User-visible generated text, including streamed answers and image descriptions, is screened by a
-separate Groq moderation model before it is shown. Tutor answers are released in
-moderated sentence/paragraph batches, with long passages flushed at 240 characters
-to keep streaming responsive. A valid `GROQ_API_KEY` is therefore
-required for the tutor and moderation.
+User-visible generated text, including tutor answers and image descriptions, is screened by a
+separate Groq moderation model before it is shown. Tutor answers are generated as a stream
+but withheld until the complete answer passes one moderation check; this avoids repeated
+moderation calls for every sentence and prevents partial answers from being displayed before
+the full output is checked. Moderation requests use a 15-second timeout. A valid
+`GROQ_API_KEY` is therefore required for the tutor and moderation.
 The default moderation model is `openai/gpt-oss-safeguard-20b`, Groq's recommended
 replacement for the decommissioned Llama Guard model. Set `GROQ_MODERATION_MODEL`
 to override it. If the configured model has been decommissioned, the app retries
 moderation with `openai/gpt-oss-safeguard-20b`. Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
-adds an API request and latency to each displayed response.
+adds one API request (with a single retry for supported transient rate limits) and
+latency to each displayed response.
 Structured outputs use smaller token budgets to avoid reserving more tokens than
 the provider's per-minute allowance. On a model rate limit, the app tries the
 configured fast model once and reports any provider reset hint if that also fails.
