@@ -400,7 +400,7 @@ class PromptSecurityTests(unittest.TestCase):
             len(manager.moderation_client.chat.completions.requests), 1
         )
 
-    def test_stream_answer_retries_rate_limited_moderation_only_once(self):
+    def test_stream_answer_fails_closed_on_rate_limited_moderation(self):
         manager = _model_manager()
         manager.client.chat.completions.stream_output = (
             "First sentence. ",
@@ -408,17 +408,15 @@ class PromptSecurityTests(unittest.TestCase):
             "Third sentence.",
         )
         moderation = manager.moderation_client.chat.completions
-        moderation.rate_limit_attempts["mock-moderation"] = 1
+        moderation.rate_limited_models.add("mock-moderation")
         moderation.rate_limit_exception = _ShortRateLimitError
 
         with patch("utils.model_manager.time.sleep") as sleep:
             streamed = list(manager.stream_answer("Explain streaming."))
 
-        self.assertEqual(
-            streamed, ["First sentence. Second sentence. Third sentence."]
-        )
-        self.assertEqual(len(moderation.requests), 2)
-        sleep.assert_called_once_with(18.8175)
+        self.assertEqual(streamed, [SAFETY_UNAVAILABLE_MESSAGE])
+        self.assertEqual(len(moderation.requests), 1)
+        sleep.assert_not_called()
 
     def test_structured_rate_limit_falls_back_to_fast_model(self):
         manager = _model_manager()
@@ -474,18 +472,18 @@ class PromptSecurityTests(unittest.TestCase):
         )
         sleep.assert_called_once_with(18.8175)
 
-    def test_moderation_retries_once_after_short_tpm_limit(self):
+    def test_rate_limited_moderation_fails_closed_without_waiting(self):
         manager = _model_manager()
         moderation = manager.moderation_client.chat.completions
-        moderation.rate_limit_attempts["mock-moderation"] = 1
+        moderation.rate_limited_models.add("mock-moderation")
         moderation.rate_limit_exception = _ShortRateLimitError
 
         with patch("utils.model_manager.time.sleep") as sleep:
             answer = manager.answer("Explain bias and variance.")
 
-        self.assertEqual(answer, '{"ok": true}')
-        self.assertEqual(len(moderation.requests), 2)
-        sleep.assert_called_once_with(18.8175)
+        self.assertEqual(answer, SAFETY_UNAVAILABLE_MESSAGE)
+        self.assertEqual(len(moderation.requests), 1)
+        sleep.assert_not_called()
 
     def test_decommissioned_moderation_model_falls_back_and_retries(self):
         manager = _model_manager()

@@ -355,7 +355,7 @@ class ModelManager:
         extras = {}
         if self._moderation_extras_supported and "gpt-oss" in self.moderation_model:
             extras["reasoning_effort"] = "low"
-        for attempt in range(2):
+        for _ in range(2):
             try:
                 return self.moderation_client.chat.completions.create(
                     model=self.moderation_model,
@@ -391,14 +391,16 @@ class ModelManager:
                             else {}
                         )
                         continue
-                delay = self._rate_limit_retry_delay(exc)
-                if attempt == 0 and delay is not None:
-                    logging.warning(
-                        "Moderation was rate-limited; retrying after %.2f seconds",
-                        delay,
+                if self._is_rate_limit_error(exc):
+                    delay = self._rate_limit_retry_delay(exc)
+                    retry_hint = (
+                        f" Provider retry hint: {delay:.2f}s." if delay else ""
                     )
-                    time.sleep(delay)
-                    continue
+                    logging.warning(
+                        "Moderation was rate-limited; withholding the answer "
+                        "without waiting.%s",
+                        retry_hint,
+                    )
                 raise
 
     @staticmethod

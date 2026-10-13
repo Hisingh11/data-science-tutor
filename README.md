@@ -42,8 +42,9 @@ to override it. If the configured model has been decommissioned, the app retries
 moderation with `openai/gpt-oss-safeguard-20b`. Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
-adds one API request (with a single retry for supported transient rate limits) and
-latency to each displayed response.
+adds one API request to each displayed response. If moderation is rate-limited,
+the answer is withheld immediately instead of waiting for the provider's reset
+window; try again when quota is available.
 Structured outputs use smaller token budgets to avoid reserving more tokens than
 the provider's per-minute allowance. On a model rate limit, the app tries the
 configured fast model once and reports any provider reset hint if that also fails.
