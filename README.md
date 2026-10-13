@@ -97,7 +97,9 @@ evals/mock_model.py     offline fake model for local UI work
 | `code` | `openai/gpt-oss-120b` | code generation and review |
 | vision | `GROQ_VISION_MODEL` (optional), then `qwen/qwen3.8-27b` | image attachments |
 
-Tutor Chat uses Groq only, with `openai/gpt-oss-20b` as the default answer model.
+The application uses the Groq SDK exclusively; it has no OpenAI SDK dependency or
+OpenAI API calls. Groq's GPT-OSS model IDs use the `openai/` namespace prefix;
+`openai/gpt-oss-20b` is the default tutor model.
 Tutor answers use temperature 0.2 and a 4,096-token budget, and are generated in
 one streaming model call after retrieval. Instructions favor complete, step-by-step
 explanations while prioritizing supported facts and admitting uncertainty. There is

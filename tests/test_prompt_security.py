@@ -537,13 +537,11 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(moderation_request["max_tokens"], 128)
         self.assertEqual(moderation_request["messages"][0]["content"], OUTPUT_SAFETY_PROMPT)
 
-    def test_groq_is_the_only_tutor_provider(self):
+    def test_groq_is_the_only_model_provider(self):
         groq_client = SimpleNamespace()
         moderation_client = SimpleNamespace()
         with (
             patch.dict(os.environ, {
-                "OPENAI_COMPAT_API_KEY": "ignored-key",
-                "OPENAI_COMPAT_BASE_URL": "https://example.invalid/v1",
                 "GROQ_REASONING_MODEL": "openai/gpt-oss-120b",
                 "GROQ_FAST_MODEL": "openai/gpt-oss-20b",
                 "GROQ_CODE_MODEL": "openai/gpt-oss-120b",

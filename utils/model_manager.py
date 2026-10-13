@@ -496,7 +496,7 @@ class ModelManager:
                 if not kwargs.get("stream"):
                     self._record(model, started, getattr(response, "usage", None))
                 return response
-            except Exception as exc:  # groq/openai raise typed errors; keep this dependency-light
+            except Exception as exc:  # Keep provider-specific SDK errors dependency-light.
                 last_exc = exc
                 text = str(exc).lower()
                 if extras and "reasoning" in text and ("unsupported" in text or "not supported" in text or "invalid" in text):
