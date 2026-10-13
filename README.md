@@ -43,8 +43,14 @@ moderation with `openai/gpt-oss-safeguard-20b`. Unsafe,
 unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
 service/model failure also prevents generated answers from being displayed. This
 adds one API request to each displayed response. If moderation is rate-limited,
-the answer is withheld immediately instead of waiting for the provider's reset
-window; try again when quota is available.
+the app retries once without waiting using `GROQ_MODERATION_FALLBACK_MODEL`
+(defaults to the fast Groq model). This fallback is not safety-specialized, but
+uses the same moderation prompt and must return exactly `SAFE`; if it fails or is
+rate-limited too, the answer is withheld. Set the fallback to another suitable
+Groq model if needed. Groq enforces organization-level per-model
+token-per-minute limits, so sustained traffic may still require a higher-quota
+service tier. Moderation requests reserve a small output budget because they
+return only `SAFE` or `TOXIC`.
 Structured outputs use smaller token budgets to avoid reserving more tokens than
 the provider's per-minute allowance. On a model rate limit, the app tries the
 configured fast model once and reports any provider reset hint if that also fails.

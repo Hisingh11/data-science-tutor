@@ -107,6 +107,7 @@ SAFETY_UNAVAILABLE_MESSAGE = (
 DEFAULT_MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
 DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
 MODERATION_TIMEOUT_SECONDS = 15
+MODERATION_MAX_TOKENS = 8
 
 
 def _configured_moderation_model() -> str:
@@ -204,8 +205,16 @@ def check_output_toxicity(text: str, create_completion) -> Optional[bool]:
         response = create_completion(messages)
         message = response.choices[0].message
         result = (getattr(message, "content", None) or "").strip().casefold()
-    except Exception:
-        logging.exception("Toxicity moderation request failed")
+    except Exception as exc:
+        if ModelManager._is_rate_limit_error(exc):
+            delay = ModelManager._rate_limit_retry_delay(exc)
+            retry_hint = f" Provider retry hint: {delay:.2f}s." if delay else ""
+            logging.warning(
+                "Toxicity moderation was rate-limited; output withheld.%s",
+                retry_hint,
+            )
+        else:
+            logging.exception("Toxicity moderation request failed")
         return None
     if result == "safe":
         return True
@@ -277,6 +286,9 @@ class ModelManager:
             "reasoning": os.getenv("GROQ_REASONING_MODEL", "openai/gpt-oss-20b"),
             "code": os.getenv("GROQ_CODE_MODEL", "openai/gpt-oss-120b"),
         }
+        self.moderation_fallback_model = os.getenv(
+            "GROQ_MODERATION_FALLBACK_MODEL", self.models["fast"]
+        ).strip()
         self._extras_supported = True
 
     @property
@@ -352,16 +364,17 @@ class ModelManager:
 
     def _create_moderation_completion(self, messages):
         """Run moderation on Groq independently of the configured tutor provider."""
+        model = self.moderation_model
         extras = {}
-        if self._moderation_extras_supported and "gpt-oss" in self.moderation_model:
+        if self._moderation_extras_supported and "gpt-oss" in model:
             extras["reasoning_effort"] = "low"
-        for _ in range(2):
+        while True:
             try:
                 return self.moderation_client.chat.completions.create(
-                    model=self.moderation_model,
+                    model=model,
                     messages=messages,
                     temperature=0,
-                    max_tokens=128,
+                    max_tokens=MODERATION_MAX_TOKENS,
                     **extras,
                 )
             except Exception as exc:
@@ -377,13 +390,14 @@ class ModelManager:
                     "model" in error and "decommissioned" in error
                 ):
                     fallback = DEFAULT_MODERATION_MODEL
-                    if self.moderation_model != fallback:
+                    if model != fallback:
                         logging.warning(
                             "Moderation model %s was decommissioned; retrying with %s",
-                            self.moderation_model,
+                            model,
                             fallback,
                         )
                         self.moderation_model = fallback
+                        model = fallback
                         extras = (
                             {"reasoning_effort": "low"}
                             if self._moderation_extras_supported
@@ -391,16 +405,26 @@ class ModelManager:
                             else {}
                         )
                         continue
-                if self._is_rate_limit_error(exc):
-                    delay = self._rate_limit_retry_delay(exc)
-                    retry_hint = (
-                        f" Provider retry hint: {delay:.2f}s." if delay else ""
-                    )
+                fallback = self.moderation_fallback_model
+                if (
+                    self._is_rate_limit_error(exc)
+                    and fallback
+                    and model != fallback
+                ):
                     logging.warning(
-                        "Moderation was rate-limited; withholding the answer "
-                        "without waiting.%s",
-                        retry_hint,
+                        "Moderation model %s was rate-limited; retrying once "
+                        "with fallback %s without waiting",
+                        model,
+                        fallback,
                     )
+                    model = fallback
+                    extras = (
+                        {"reasoning_effort": "low"}
+                        if self._moderation_extras_supported
+                        and "gpt-oss" in fallback
+                        else {}
+                    )
+                    continue
                 raise
 
     @staticmethod

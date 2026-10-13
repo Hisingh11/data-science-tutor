@@ -9,6 +9,7 @@ from utils.image_recognition import analyze_image
 from utils.model_manager import (
     INJECTION_RESISTANCE_PROMPT,
     LEAKAGE_BLOCKED_MESSAGE,
+    MODERATION_MAX_TOKENS,
     MODERATION_TIMEOUT_SECONDS,
     OUTPUT_SAFETY_PROMPT,
     SAFETY_BLOCKED_MESSAGE,
@@ -108,6 +109,7 @@ def _model_manager():
         "reasoning": "mock-reasoning",
         "code": "mock-code",
     }
+    manager.moderation_fallback_model = "mock-fast"
     manager.moderation_model = "mock-moderation"
     manager._moderation_extras_supported = False
     manager.api_key = "gsk_" + "A" * 48
@@ -131,6 +133,9 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(manager.models["reasoning"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["fast"], "openai/gpt-oss-20b")
         self.assertEqual(manager.models["code"], "openai/gpt-oss-120b")
+        self.assertEqual(
+            manager.moderation_fallback_model, "openai/gpt-oss-20b"
+        )
         self.assertEqual(
             manager.moderation_model, "openai/gpt-oss-safeguard-20b"
         )
@@ -400,7 +405,7 @@ class PromptSecurityTests(unittest.TestCase):
             len(manager.moderation_client.chat.completions.requests), 1
         )
 
-    def test_stream_answer_fails_closed_on_rate_limited_moderation(self):
+    def test_stream_answer_falls_back_when_moderation_is_rate_limited(self):
         manager = _model_manager()
         manager.client.chat.completions.stream_output = (
             "First sentence. ",
@@ -414,8 +419,13 @@ class PromptSecurityTests(unittest.TestCase):
         with patch("utils.model_manager.time.sleep") as sleep:
             streamed = list(manager.stream_answer("Explain streaming."))
 
-        self.assertEqual(streamed, [SAFETY_UNAVAILABLE_MESSAGE])
-        self.assertEqual(len(moderation.requests), 1)
+        self.assertEqual(
+            streamed, ["First sentence. Second sentence. Third sentence."]
+        )
+        self.assertEqual(
+            [request["model"] for request in moderation.requests],
+            ["mock-moderation", "mock-fast"],
+        )
         sleep.assert_not_called()
 
     def test_structured_rate_limit_falls_back_to_fast_model(self):
@@ -472,7 +482,28 @@ class PromptSecurityTests(unittest.TestCase):
         )
         sleep.assert_called_once_with(18.8175)
 
-    def test_rate_limited_moderation_fails_closed_without_waiting(self):
+    def test_moderation_fallback_rate_limit_fails_closed_without_waiting(self):
+        manager = _model_manager()
+        moderation = manager.moderation_client.chat.completions
+        moderation.rate_limited_models.update({"mock-moderation", "mock-fast"})
+        moderation.rate_limit_exception = _ShortRateLimitError
+
+        with (
+            patch("utils.model_manager.time.sleep") as sleep,
+            self.assertLogs("root", level="WARNING") as logs,
+        ):
+            answer = manager.answer("Explain bias and variance.")
+
+        self.assertEqual(answer, SAFETY_UNAVAILABLE_MESSAGE)
+        self.assertEqual(
+            [request["model"] for request in moderation.requests],
+            ["mock-moderation", "mock-fast"],
+        )
+        self.assertTrue(any("output withheld" in line for line in logs.output))
+        self.assertFalse(any("Traceback" in line for line in logs.output))
+        sleep.assert_not_called()
+
+    def test_rate_limited_moderation_falls_back_without_waiting(self):
         manager = _model_manager()
         moderation = manager.moderation_client.chat.completions
         moderation.rate_limited_models.add("mock-moderation")
@@ -481,9 +512,27 @@ class PromptSecurityTests(unittest.TestCase):
         with patch("utils.model_manager.time.sleep") as sleep:
             answer = manager.answer("Explain bias and variance.")
 
-        self.assertEqual(answer, SAFETY_UNAVAILABLE_MESSAGE)
-        self.assertEqual(len(moderation.requests), 1)
+        self.assertEqual(answer, '{"ok": true}')
+        self.assertEqual(
+            [request["model"] for request in moderation.requests],
+            ["mock-moderation", "mock-fast"],
+        )
         sleep.assert_not_called()
+
+    def test_moderation_fallback_still_blocks_toxic_answer(self):
+        manager = _model_manager()
+        moderation = manager.moderation_client.chat.completions
+        moderation.rate_limited_models.add("mock-moderation")
+        moderation.moderation_output = "TOXIC"
+        moderation.rate_limit_exception = _ShortRateLimitError
+
+        answer = manager.answer("Explain bias and variance.")
+
+        self.assertEqual(answer, SAFETY_BLOCKED_MESSAGE)
+        self.assertEqual(
+            [request["model"] for request in moderation.requests],
+            ["mock-moderation", "mock-fast"],
+        )
 
     def test_decommissioned_moderation_model_falls_back_and_retries(self):
         manager = _model_manager()
@@ -534,7 +583,9 @@ class PromptSecurityTests(unittest.TestCase):
         self.assertEqual(answer, '{"ok": true}')
         moderation_request = manager.moderation_client.chat.completions.requests[0]
         self.assertEqual(moderation_request["model"], "mock-moderation")
-        self.assertEqual(moderation_request["max_tokens"], 128)
+        self.assertEqual(
+            moderation_request["max_tokens"], MODERATION_MAX_TOKENS
+        )
         self.assertEqual(moderation_request["messages"][0]["content"], OUTPUT_SAFETY_PROMPT)
 
     def test_groq_is_the_only_model_provider(self):
