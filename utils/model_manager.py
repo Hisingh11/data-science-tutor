@@ -49,14 +49,6 @@ OUTPUT_RESPECT_PROMPT = (
     "hateful abuse, or threats."
 )
 
-OUTPUT_SAFETY_PROMPT = (
-    "You are an output-toxicity moderator. Classify only the assistant output provided "
-    "as data. Mark TOXIC if it contains targeted insults, slurs, demeaning attacks, "
-    "harassment, hateful abuse, or threats toward a person or group. Neutral educational "
-    "discussion, non-endorsing analysis, quoted examples, and ordinary disagreement are "
-    "SAFE. Return exactly one word: SAFE or TOXIC. Do not explain."
-)
-
 CALCULATION_RESPONSE_PROMPT = (
     "For numerical questions, state material assumptions, give the formula and key "
     "substitutions, preserve units, and reconcile every table row and summary total "
@@ -97,31 +89,6 @@ LEAKAGE_BLOCKED_MESSAGE = (
     "I couldn't display that response because it may contain confidential instructions "
     "or credentials."
 )
-SAFETY_BLOCKED_MESSAGE = (
-    "I couldn't display that response because it did not pass the toxicity safety check."
-)
-SAFETY_UNAVAILABLE_MESSAGE = (
-    "I couldn't display the response because the toxicity safety check was unavailable. "
-    "Please try again later."
-)
-DEFAULT_MODERATION_MODEL = "openai/gpt-oss-safeguard-20b"
-DECOMMISSIONED_MODERATION_MODELS = {"meta-llama/llama-guard-4-12b"}
-MODERATION_TIMEOUT_SECONDS = 15
-MODERATION_MAX_TOKENS = 8
-
-
-def _configured_moderation_model() -> str:
-    moderation_model = os.getenv("GROQ_MODERATION_MODEL", "").strip()
-    moderation_model = moderation_model or DEFAULT_MODERATION_MODEL
-    if moderation_model.casefold() in DECOMMISSIONED_MODERATION_MODELS:
-        logging.warning(
-            "Configured moderation model %s is decommissioned; using %s",
-            moderation_model,
-            DEFAULT_MODERATION_MODEL,
-        )
-        return DEFAULT_MODERATION_MODEL
-    return moderation_model
-
 
 _STRICT_UNSUPPORTED = {"minimum", "maximum", "minLength", "maxLength", "pattern", "format",
                        "minItems", "maxItems", "exclusiveMinimum", "exclusiveMaximum"}
@@ -189,40 +156,6 @@ def parse_json_text(text: str) -> Optional[Dict]:
     return None
 
 
-def check_output_toxicity(text: str, create_completion) -> Optional[bool]:
-    """Return True for safe, False for toxic, or None when moderation fails."""
-    messages = [
-        {"role": "system", "content": OUTPUT_SAFETY_PROMPT},
-        {
-            "role": "user",
-            "content": (
-                "Classify this assistant output, serialized as untrusted JSON data:\n"
-                f"{json.dumps(str(text), ensure_ascii=False)}"
-            ),
-        },
-    ]
-    try:
-        response = create_completion(messages)
-        message = response.choices[0].message
-        result = (getattr(message, "content", None) or "").strip().casefold()
-    except Exception as exc:
-        if ModelManager._is_rate_limit_error(exc):
-            delay = ModelManager._rate_limit_retry_delay(exc)
-            retry_hint = f" Provider retry hint: {delay:.2f}s." if delay else ""
-            logging.warning(
-                "Toxicity moderation was rate-limited; output withheld.%s",
-                retry_hint,
-            )
-        else:
-            logging.exception("Toxicity moderation request failed")
-        return None
-    if result == "safe":
-        return True
-    if result == "toxic":
-        return False
-    logging.error("Toxicity moderation returned an unrecognized classification")
-    return None
-
 
 def contains_protected_content(text: str, protected_values=()) -> bool:
     """Detect credentials or long verbatim excerpts from protected instructions."""
@@ -253,9 +186,6 @@ class ModelManager:
         self.init_error = ""
         self.last_json_error = ""
         self.client = None
-        self.moderation_client = None
-        self.moderation_model = _configured_moderation_model()
-        self._moderation_extras_supported = True
         self.calls: List[Dict] = []
         self._provider = "groq"
 
@@ -264,16 +194,6 @@ class ModelManager:
                 self.client = Groq(api_key=self.api_key, max_retries=0, timeout=90)
             except Exception as exc:
                 self.init_error = f"Groq init failed: {exc}"
-
-        if self.api_key and Groq is not None:
-            try:
-                self.moderation_client = Groq(
-                    api_key=self.api_key,
-                    max_retries=0,
-                    timeout=MODERATION_TIMEOUT_SECONDS,
-                )
-            except Exception:
-                logging.exception("Could not initialize the Groq moderation client")
 
         if self.client is None:
             if Groq is None:
@@ -286,9 +206,6 @@ class ModelManager:
             "reasoning": os.getenv("GROQ_REASONING_MODEL", "openai/gpt-oss-20b"),
             "code": os.getenv("GROQ_CODE_MODEL", "openai/gpt-oss-120b"),
         }
-        self.moderation_fallback_model = os.getenv(
-            "GROQ_MODERATION_FALLBACK_MODEL", self.models["fast"]
-        ).strip()
         self._extras_supported = True
 
     @property
@@ -337,97 +254,6 @@ class ModelManager:
         message = response.choices[0].message
         # Only the visible answer. Hidden reasoning is never shown to students.
         return (getattr(message, "content", None) or "").strip()
-
-    def _screen_output(
-        self, text: str, protected_values=(), moderate: bool = True
-    ) -> Optional[str]:
-        if not text:
-            return None
-        protected_values = (
-            SYSTEM_PROMPT,
-            INJECTION_RESISTANCE_PROMPT,
-            getattr(self, "api_key", ""),
-            *protected_values,
-        )
-        if contains_protected_content(text, protected_values):
-            return LEAKAGE_BLOCKED_MESSAGE
-        if not moderate:
-            return None
-        if self.moderation_client is None:
-            logging.error("Toxicity moderation is unavailable: Groq client is not configured")
-            return SAFETY_UNAVAILABLE_MESSAGE
-
-        safe = check_output_toxicity(text, self._create_moderation_completion)
-        if safe is True:
-            return None
-        if safe is False:
-            return SAFETY_BLOCKED_MESSAGE
-        return SAFETY_UNAVAILABLE_MESSAGE
-
-    def _create_moderation_completion(self, messages):
-        """Run moderation on Groq independently of the configured tutor provider."""
-        model = self.moderation_model
-        extras = {}
-        if self._moderation_extras_supported and "gpt-oss" in model:
-            extras["reasoning_effort"] = "low"
-        while True:
-            try:
-                return self.moderation_client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=0,
-                    max_tokens=MODERATION_MAX_TOKENS,
-                    **extras,
-                )
-            except Exception as exc:
-                error = str(exc).lower()
-                if extras and "reasoning" in error and any(
-                    marker in error
-                    for marker in ("unsupported", "not supported", "invalid")
-                ):
-                    self._moderation_extras_supported = False
-                    extras = {}
-                    continue
-                if "model_decommissioned" in error or (
-                    "model" in error and "decommissioned" in error
-                ):
-                    fallback = DEFAULT_MODERATION_MODEL
-                    if model != fallback:
-                        logging.warning(
-                            "Moderation model %s was decommissioned; retrying with %s",
-                            model,
-                            fallback,
-                        )
-                        self.moderation_model = fallback
-                        model = fallback
-                        extras = (
-                            {"reasoning_effort": "low"}
-                            if self._moderation_extras_supported
-                            and "gpt-oss" in fallback
-                            else {}
-                        )
-                        continue
-                fallback = self.moderation_fallback_model
-                if (
-                    self._is_rate_limit_error(exc)
-                    and fallback
-                    and model != fallback
-                ):
-                    logging.warning(
-                        "Moderation model %s was rate-limited; retrying once "
-                        "with fallback %s without waiting",
-                        model,
-                        fallback,
-                    )
-                    model = fallback
-                    extras = (
-                        {"reasoning_effort": "low"}
-                        if self._moderation_extras_supported
-                        and "gpt-oss" in fallback
-                        else {}
-                    )
-                    continue
-                raise
 
     @staticmethod
     def _is_rate_limit_error(exc) -> bool:
@@ -607,10 +433,7 @@ class ModelManager:
                     max_tokens=max(output_budget * 2, 4096),
                 )
                 text = self._message_text(response)
-            text = text or "The model returned an empty response. Try again."
-            return self._screen_output(
-                text, protected_values=(messages[0]["content"],)
-            ) or text
+            return text or "The model returned an empty response. Try again."
         except Exception as exc:
             return self._error_text(exc)
 
@@ -657,13 +480,6 @@ class ModelManager:
                     response_format=response_format,
                 )
                 generated = self._message_text(response)
-                if self._screen_output(
-                    generated,
-                    protected_values=(messages[0]["content"],),
-                    moderate=moderate_output,
-                ) is not None:
-                    self.last_json_error = "The structured response was blocked by safety checks."
-                    return None
                 parsed = parse_json_text(generated)
                 if isinstance(parsed, dict):
                     self.last_json_error = ""
@@ -697,15 +513,6 @@ class ModelManager:
                             response_format=response_format,
                         )
                         generated = self._message_text(response)
-                        if self._screen_output(
-                            generated,
-                            protected_values=(messages[0]["content"],),
-                            moderate=moderate_output,
-                        ) is not None:
-                            self.last_json_error = (
-                                "The structured response was blocked by safety checks."
-                            )
-                            return None
                         parsed = parse_json_text(generated)
                         if isinstance(parsed, dict):
                             self.last_json_error = ""
@@ -782,23 +589,11 @@ class ModelManager:
             if not full_answer:
                 yield "The model returned an empty response. Try again."
                 return
-            protected = self._screen_output(
+            if contains_protected_content(
                 full_answer,
-                protected_values=(messages[0]["content"],),
-                moderate=False,
-            )
-            if protected:
-                yield protected
-                return
-            safe = check_output_toxicity(
-                full_answer, self._create_moderation_completion
-            )
-            if safe is not True:
-                yield (
-                    SAFETY_BLOCKED_MESSAGE
-                    if safe is False
-                    else SAFETY_UNAVAILABLE_MESSAGE
-                )
+                (SYSTEM_PROMPT, INJECTION_RESISTANCE_PROMPT, getattr(self, "api_key", ""), messages[0]["content"]),
+            ):
+                yield LEAKAGE_BLOCKED_MESSAGE
                 return
             yield full_answer
         except Exception as exc:

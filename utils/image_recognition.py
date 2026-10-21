@@ -95,11 +95,6 @@ def analyze_image(image_path, prompt="Describe this image in detail"):
                 text, (get_groq_api_key(), INJECTION_RESISTANCE_PROMPT, system_prompt)
             ):
                 return LEAKAGE_BLOCKED_MESSAGE
-            screened = ModelManager()._screen_output(
-                text, protected_values=(INJECTION_RESISTANCE_PROMPT, system_prompt)
-            )
-            if screened is not None:
-                return screened
             return text
         except Exception as exc:
             last_error = str(exc)
