@@ -438,8 +438,7 @@ class ModelManager:
             return self._error_text(exc)
 
     def complete_json(self, prompt, schema, name="result", model_type="reasoning",
-                      temperature=0.2, max_tokens=2048, context="",
-                      moderate_output=True):
+                      temperature=0.2, max_tokens=2048, context=""):
         self.last_json_error = ""
         if not self.client:
             self.last_json_error = self.init_error or "The model client is not initialized."

@@ -30,27 +30,6 @@ streamlit run app.py
 
 Optional `.env` settings (see `.env.example`): override model ids (`GROQ_REASONING_MODEL`, `GROQ_FAST_MODEL`, `GROQ_CODE_MODEL`, `GROQ_VISION_MODEL`). Tutor Chat automatically uses DuckDuckGo for explicit online-search requests and time-sensitive questions; set `SELF_RAG_WEB=0` to disable these lookups.
 
-User-visible generated text, including tutor answers and image descriptions, is screened by a
-separate Groq moderation model before it is shown. Tutor answers are generated as a stream
-but withheld until the complete answer passes one moderation check; this avoids repeated
-moderation calls for every sentence and prevents partial answers from being displayed before
-the full output is checked. Moderation requests use a 15-second timeout. A valid
-`GROQ_API_KEY` is therefore required for the tutor and moderation.
-The default moderation model is `openai/gpt-oss-safeguard-20b`, Groq's recommended
-replacement for the decommissioned Llama Guard model. Set `GROQ_MODERATION_MODEL`
-to override it. If the configured model has been decommissioned, the app retries
-moderation with `openai/gpt-oss-safeguard-20b`. Unsafe,
-unrecognized, or unmoderated output is withheld (fail-closed), so a moderation
-service/model failure also prevents generated answers from being displayed. This
-adds one API request to each displayed response. If moderation is rate-limited,
-the app retries once without waiting using `GROQ_MODERATION_FALLBACK_MODEL`
-(defaults to the fast Groq model). This fallback is not safety-specialized, but
-uses the same moderation prompt and must return exactly `SAFE`; if it fails or is
-rate-limited too, the answer is withheld. Set the fallback to another suitable
-Groq model if needed. Groq enforces organization-level per-model
-token-per-minute limits, so sustained traffic may still require a higher-quota
-service tier. Moderation requests reserve a small output budget because they
-return only `SAFE` or `TOXIC`.
 Structured outputs use smaller token budgets to avoid reserving more tokens than
 the provider's per-minute allowance. On a model rate limit, the app tries the
 configured fast model once and reports any provider reset hint if that also fails.
@@ -120,16 +99,14 @@ Model calls use a shared security policy that instructs the model not to reveal
 hidden instructions or secrets and treats uploaded files, retrieved notes, web snippets,
 images/OCR, code comments, and prior conversation as untrusted data. Source material
 and conversation history are sent separately from system instructions, serialized
-as JSON; the vision path applies the same policy. Before toxicity moderation, generated
-text is locally withheld if it contains the configured Groq API key or a long,
-verbatim excerpt from system instructions. This applies to normal, streamed, JSON, and
-image responses. Generated content is also independently screened for toxicity before
-it reaches the UI. The app does not expose model tools or execute code from prompts or
-source material.
+as JSON; the vision path applies the same policy. Generated text is locally withheld
+if it contains the configured Groq API key or a long, verbatim excerpt from system
+instructions. This applies to normal, streamed, JSON, and image responses. The app
+does not expose model tools or execute code from prompts or source material.
 
 These are layered mitigations, not a mathematical guarantee: the local check cannot
 reliably detect paraphrased instructions or arbitrary sensitive data, and prompt
-injection and toxicity classification can fail on edge cases. Do not put secrets in
+injection classification can fail on edge cases. Do not put secrets in
 prompts or retrievable content, and do not grant the model privileged tools without
 adding independent authorization and output validation.
 
@@ -138,7 +115,7 @@ adding independent authorization and output validation.
 ## Fixes in this version
 
 - **Hidden reasoning leaked to users.** When `content` was empty the app displayed the model's internal `reasoning`. It now never does.
-- **Verbatim instruction/credential disclosure.** Model output is now locally checked for long excerpts of system instructions and the configured Groq API key before moderation or display.
+- **Verbatim instruction/credential disclosure.** Model output is now locally checked for long excerpts of system instructions and the configured Groq API key before display.
 - **Empty JSON responses.** gpt-oss calls now send `reasoning_effort` (low for JSON) and a larger token budget; strict schemas are sanitised (Groq rejects `minimum`/`maximum`) and fenced JSON is parsed.
 - **Misrouting.** Keywords anywhere in a message triggered tools ("what is an assignment operator?" made an assignment; "common interview questions?" started an interview; "Write a Python function…" was not recognised as code). The new router scores 40/40 on the routing set vs 23/40 for the old rules.
 - **Irrelevant context.** Any BM25 hit was injected as "relevant notes" (e.g. *p-value* pulled in the feature-scaling note). Notes now need an absolute and relative score; light stemming and 10 new notes (hypothesis testing, A/B tests, distributions/CLT, regression, clustering, missing values, time series, SQL, LLM evaluation, core Python). Hit@1 57.5% → 95%.

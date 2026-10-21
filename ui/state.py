@@ -20,7 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FEEDBACK_PATH = os.path.join(ROOT, "data", "feedback.jsonl")
 UPLOAD_DIR = os.path.join(ROOT, "data", "uploads")
 ASSIGNMENTS_DIR = os.path.join(ROOT, "assignments")
-MODEL_CACHE_VERSION = "moderation-gpt-oss-safeguard-20b-v1"
+MODEL_CACHE_VERSION = "core-model-v2"
 CORE_MODEL_VERSION_KEY = "_core_model_version"
 
 

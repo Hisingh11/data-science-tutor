@@ -57,3 +57,7 @@ htmlcov/
 secrets.toml
 # Eval run history (latest.json / latest_report.md are kept)
 evals/results/2*
+
+# Agent & scratch
+.kilo/
+calc_fd.py
