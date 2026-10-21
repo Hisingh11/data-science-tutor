@@ -1,5 +1,6 @@
 import re
 
+
 class CodeAssistant:
     def __init__(self, model_manager):
         self.model = model_manager
@@ -31,12 +32,11 @@ class CodeAssistant:
         for piece in self.model.stream_code(prompt, language, context=context):
             parts.append(piece)
             yield piece
+
         text = "".join(parts)
-        if text.startswith(("Error:", "API key not configured", "GROQ_API_KEY", "The groq package")):
+        if self._has_generatable_code(text, language):
             return
-        extracted = self._extract_code(text, language)
-        if extracted and len(extracted) >= 10:
-            return
+
         fallback = (
             f"Write a simple {language} function for: {problem_description}. "
             "Only output the code, no explanation."
@@ -46,6 +46,12 @@ class CodeAssistant:
             fallback, context=context, model_type="code", temperature=0.3
         )
 
+    def _has_generatable_code(self, text: str, language: str = "python") -> bool:
+        if not text or text.startswith(("Error:", "API key not configured", "GROQ_API_KEY", "The groq package")):
+            return False
+        extracted = self._extract_code(text, language)
+        return bool(extracted and len(extracted) >= 10)
+
     def _extract_code(self, response: str, language: str = "python") -> str:
         aliases = {
             "python": {"python", "py", ""},
@@ -53,35 +59,31 @@ class CodeAssistant:
             "r": {"r", ""},
         }
         allowed = aliases.get(language, {language.lower(), ""})
-        pattern = r'```(\w*)\n(.*?)```'
-        matches = re.findall(pattern, response, re.DOTALL)
-        fallback = ""
-        for match in matches:
-            body = match[1].strip()
-            if not fallback:
-                fallback = body
-            if match[0].lower() in allowed:
+        blocks = []
+        for tag, body in re.findall(r"```(\w*)\s*\n(.*?)```", response, re.DOTALL):
+            cleaned = body.strip()
+            if cleaned:
+                blocks.append((tag.lower(), cleaned))
+
+        for tag, body in blocks:
+            if tag in allowed:
                 return body
-        if fallback:
-            return fallback
-        
-        # If no code block, try to find python-like code
-        lines = response.split('\n')
+        if blocks:
+            return blocks[0][1]
+
+        lines = response.splitlines()
         code_lines = []
-        in_code = False
-        
+        in_code_block = False
         for line in lines:
-            if '```' in line:
-                in_code = not in_code
+            if "```" in line:
+                in_code_block = not in_code_block
                 continue
-            if in_code or (line.strip().startswith(('def ', 'class ', 'import ', 'from '))):
+            if in_code_block or line.lstrip().startswith(("def ", "class ", "import ", "from ")):
                 code_lines.append(line)
-        
         if code_lines:
-            return '\n'.join(code_lines)
-        
-        # Return the whole response if it looks like code
-        if 'def ' in response or 'import ' in response:
-            return response
-        
+            return "\n".join(code_lines)
+
+        if any(marker in response for marker in ("def ", "import ", "from ")):
+            return response.strip()
+
         return ""

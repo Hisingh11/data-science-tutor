@@ -204,8 +204,7 @@ class SelfRAGEngine:
                     "score": 3,
                 })
 
-        selected.sort(key=lambda item: item["score"], reverse=True)
-        state["web_notes"] = selected[:3]
+        state["web_notes"] = sorted(selected, key=lambda item: item["score"], reverse=True)[:3]
         state["web"] = len(state["web_notes"])
         state["retrieved"] = state.get("retrieved", []) + [
             {"topic": item["title"], "source": "web", "href": item["href"]}

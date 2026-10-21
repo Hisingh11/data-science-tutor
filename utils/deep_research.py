@@ -8,41 +8,31 @@ class DeepResearchEngine:
     def __init__(self, model_manager):
         self.model = model_manager
 
+    @staticmethod
+    def _result(title: str, body: str = "", href: str = "", source: str = "web") -> Dict:
+        return {"title": title, "body": body, "href": href, "source": source}
+
     def search_web(self, query: str, max_results: int = 5) -> List[Dict]:
         try:
             from ddgs import DDGS
         except ImportError:
-            return [{
-                "title": "Search unavailable",
-                "body": "Install the ddgs package to enable web research.",
-                "href": "",
-                "source": "error",
-            }]
+            return [self._result("Search unavailable", "Install the ddgs package to enable web research.", "", "error")]
         try:
             search_results = DDGS().text(query, max_results=max_results) or []
-            results = []
-            for result in search_results:
-                results.append({
-                    "title": result.get("title", ""),
-                    "body": result.get("body", ""),
-                    "href": result.get("href", ""),
-                    "source": "web",
-                })
+            results = [
+                self._result(
+                    result.get("title", ""),
+                    result.get("body", ""),
+                    result.get("href", ""),
+                    "web",
+                )
+                for result in search_results
+            ]
             if not results:
-                return [{
-                    "title": "No results",
-                    "body": "The search returned nothing for this query.",
-                    "href": "",
-                    "source": "empty",
-                }]
+                return [self._result("No results", "The search returned nothing for this query.", "", "empty")]
             return results
         except Exception as exc:
-            return [{
-                "title": "Search error",
-                "body": str(exc),
-                "href": "",
-                "source": "error",
-            }]
+            return [self._result("Search error", str(exc), "", "error")]
 
     def fact_check(self, claim: str, context: str = "") -> Dict:
         search_results = [r for r in self.search_web(claim[:300], max_results=5) if r.get("source") == "web"]

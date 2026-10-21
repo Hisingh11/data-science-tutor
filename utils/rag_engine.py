@@ -285,23 +285,24 @@ class RAGEngine:
         text = re.sub(r"\s+", " ", text).strip()
         return text[:500]
 
-    def _tokens(self, text: str) -> List[str]:
+    def _tokens(self, text: str, *, expand: bool = False) -> List[str]:
         keep = set(EXPANSIONS)
-        return [
-            _stem(token) for token in re.findall(r"[a-z0-9]+", text.lower())
+        tokens = [
+            _stem(token) for token in re.findall(r"[a-z0-9]+", (text or "").lower())
             if token not in STOPWORDS and (len(token) > 2 or token in keep)
         ]
+        if not expand:
+            return tokens
+        expanded = []
+        for token in tokens:
+            expanded.extend(_stem(word) for word in EXPANSIONS.get(token, []))
+        return tokens + tokens + expanded
 
     def _doc_tokens(self, text: str) -> List[str]:
         return self._tokens(text)
 
     def _query_tokens(self, query: str) -> List[str]:
-        original = self._tokens(query)
-        extra = []
-        for token in original:
-            extra.extend(_stem(word) for word in EXPANSIONS.get(token, []))
-        # Original words count twice so a synonym cannot outrank the question.
-        return original + original + extra
+        return self._tokens(query, expand=True)
 
     def _anchored(self, query: str, text: str) -> bool:
         needles = set(self._query_tokens(self._clean_query(query))) - GENERIC_OVERLAP_TERMS

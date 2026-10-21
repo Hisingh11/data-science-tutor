@@ -154,31 +154,22 @@ class InterviewSystem:
         recent = self.recent_questions.setdefault(key, [])
         recent_keys = {self._question_key(question) for question in recent}
         generated = self._generate_questions(topic, difficulty, recent)
-        questions = []
-        current_keys = set()
-        for question in generated:
-            cleaned = self._clean_question(question)
-            question_key = self._question_key(cleaned)
-            if cleaned and question_key not in recent_keys and question_key not in current_keys:
-                questions.append(cleaned)
-                current_keys.add(question_key)
+        questions = self._unique_questions(generated, recent_keys)
 
         fallback = [
             question for question in bank
-            if self._question_key(question) not in recent_keys
-            and self._question_key(question) not in current_keys
+            if self._question_key(question) not in recent_keys and self._question_key(question) not in self._keys(questions)
         ]
         random.shuffle(fallback)
         for question in fallback:
             if len(questions) >= QUESTIONS_PER_INTERVIEW:
                 break
             questions.append(question)
-            current_keys.add(self._question_key(question))
 
         if len(questions) < QUESTIONS_PER_INTERVIEW:
             fallback = [
                 question for question in bank
-                if self._question_key(question) not in current_keys
+                if self._question_key(question) not in self._keys(questions)
             ]
             random.shuffle(fallback)
             questions.extend(fallback[:QUESTIONS_PER_INTERVIEW - len(questions)])
@@ -188,6 +179,22 @@ class InterviewSystem:
         recent.extend(self.questions)
         self.recent_questions[key] = recent[-RECENT_QUESTION_LIMIT:]
         return bool(self.questions)
+
+    @staticmethod
+    def _keys(items: List[str]) -> set:
+        return {InterviewSystem._question_key(item) for item in items}
+
+    @classmethod
+    def _unique_questions(cls, questions: List[str], excluded: set) -> List[str]:
+        seen = set()
+        unique = []
+        for question in questions:
+            cleaned = cls._clean_question(question)
+            key = cls._question_key(cleaned)
+            if cleaned and key not in excluded and key not in seen:
+                unique.append(cleaned)
+                seen.add(key)
+        return unique
 
     def _generate_questions(self, topic: str, difficulty: str, recent: List[str]) -> List[str]:
         prompt = (

@@ -16,6 +16,32 @@ st.set_page_config(
 from ui.state import core, reset_core  # noqa: E402  (set_page_config must run first)
 from ui.theme import esc, inject_css  # noqa: E402
 
+
+def _short_model_name(name: str) -> str:
+    return esc((name or "").split("/")[-1])
+
+
+def _status_html(model, ok: bool) -> str:
+    dot = "#2dd4bf" if ok else "#f87171"
+    rows = (
+        f'<div class="sb-row"><span><span class="sb-dot" style="background:{dot}"></span>'
+        f'Groq API</span><span>{"connected" if ok else "not set"}</span></div>'
+        f'<div class="sb-row"><span>Tutor model</span><span>{_short_model_name(model.models["reasoning"])}</span></div>'
+        f'<div class="sb-row"><span>Checker model</span><span>{_short_model_name(model.models["fast"])}</span></div>'
+    )
+    return f'<div class="sb-section">Status</div>{rows}'
+
+
+def _usage_html(usage: dict) -> str:
+    if not usage.get("calls"):
+        return ""
+    return (
+        f'<div class="sb-row"><span>LLM calls</span><span>{usage["calls"]}</span></div>'
+        f'<div class="sb-row"><span>Avg latency</span><span>{usage["avg_latency_s"]}s</span></div>'
+        f'<div class="sb-row"><span>Tokens</span><span>{usage["prompt_tokens"] + usage["completion_tokens"]:,}</span></div>'
+    )
+
+
 inject_css()
 tools = core()
 
@@ -37,22 +63,11 @@ st.logo("assets/logo.svg", size="large", icon_image="assets/icon.svg")
 with st.sidebar:
     model = tools.model
     ok = model.ready
-    st.markdown('<div class="sb-section">Status</div>', unsafe_allow_html=True)
-    st.markdown(
-        f'<div class="sb-row"><span><span class="sb-dot" style="background:{"#2dd4bf" if ok else "#f87171"}"></span>'
-        f'Groq API</span><span>{"connected" if ok else "not set"}</span></div>'
-        f'<div class="sb-row"><span>Tutor model</span><span>{esc(model.models["reasoning"].split("/")[-1])}</span></div>'
-        f'<div class="sb-row"><span>Checker model</span><span>{esc(model.models["fast"].split("/")[-1])}</span></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(_status_html(model, ok), unsafe_allow_html=True)
     usage = model.usage_summary()
-    if usage["calls"]:
-        st.markdown(
-            f'<div class="sb-row"><span>LLM calls</span><span>{usage["calls"]}</span></div>'
-            f'<div class="sb-row"><span>Avg latency</span><span>{usage["avg_latency_s"]}s</span></div>'
-            f'<div class="sb-row"><span>Tokens</span><span>{usage["prompt_tokens"] + usage["completion_tokens"]:,}</span></div>',
-            unsafe_allow_html=True,
-        )
+    usage_html = _usage_html(usage)
+    if usage_html:
+        st.markdown(usage_html, unsafe_allow_html=True)
     st.markdown('<div class="sb-section">Session</div>', unsafe_allow_html=True)
     if st.button("New chat", icon=":material/add_comment:", width="stretch"):
         st.session_state.messages = []
